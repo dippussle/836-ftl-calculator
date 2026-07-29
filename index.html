@@ -3,59 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>836 FTL v2 — Nether Pearl Calculator</title>
-  <meta name="description" content="Calculate TNT counts for the 836 FTL v2 pearl cannon. Nether bedrock ceiling support (y=127) for first-time travel." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <title>836 FTL v2 Nether Pearl Calculator</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
   <header class="site-header">
     <div class="header-inner">
-      <div class="logo-group">
-        <span class="logo-icon">⚡</span>
-        <span class="logo-text">836 FTL <em>v2</em></span>
-      </div>
-      <span class="logo-sub">Nether Pearl Calculator</span>
+      <h1>836 FTL v2 Calculator</h1>
+      <span class="sub">Nether Pearl Trajectory</span>
     </div>
   </header>
 
   <main class="container">
 
-    <!-- TABS -->
-    <nav class="tabs" role="tablist" aria-label="Calculator sections">
-      <button class="tab-btn active" data-tab="calc" role="tab" aria-selected="true">
-        <span>🧮</span> Calculate TNT
-      </button>
-      <button class="tab-btn" data-tab="sim" role="tab" aria-selected="false">
-        <span>🔮</span> Simulate Pearl
-      </button>
-      <button class="tab-btn" data-tab="enc" role="tab" aria-selected="false">
-        <span>🎨</span> Wool Encoding
-      </button>
-      <button class="tab-btn" data-tab="help" role="tab" aria-selected="false">
-        <span>📖</span> How It Works
-      </button>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="calc">Calculate TNT</button>
+      <button class="tab-btn" data-tab="sim">Simulate Pearl</button>
+      <button class="tab-btn" data-tab="enc">Wool Encoding</button>
+      <button class="tab-btn" data-tab="help">Info</button>
     </nav>
 
-    <!-- ══ TAB 1: CALCULATE TNT ══ -->
+    <!-- TAB 1: CALCULATE -->
     <section class="tab-panel active" id="tab-calc">
       <div class="two-col">
 
-        <!-- Inputs -->
         <div class="card">
-          <h2 class="card-title"><span>📍</span> Cannon Origin</h2>
+          <h2>Cannon Position</h2>
           <div class="field-row">
-            <label for="c-origin-x">Pearl Origin X</label>
+            <label for="c-origin-x">Pearl X</label>
             <input type="number" id="c-origin-x" value="-119" step="1" />
           </div>
           <div class="field-row">
-            <label for="c-origin-z">Pearl Origin Z</label>
+            <label for="c-origin-z">Pearl Z</label>
             <input type="number" id="c-origin-z" value="40" step="1" />
           </div>
 
-          <h2 class="card-title section-gap"><span>🎯</span> Destination</h2>
+          <h2 class="section-gap">Destination</h2>
           <div class="field-row">
             <label for="c-dest-x">Destination X</label>
             <input type="number" id="c-dest-x" value="5000" step="1" />
@@ -65,22 +49,17 @@
             <input type="number" id="c-dest-z" value="0" step="1" />
           </div>
 
-          <h2 class="card-title section-gap"><span>⚙️</span> Settings</h2>
-
+          <h2 class="section-gap">Settings</h2>
           <div class="field-row">
-            <label for="c-stop-mode">Stop Mode</label>
+            <label for="c-stop-mode">Mode</label>
             <select id="c-stop-mode">
-              <option value="128">🧱 Nether Bedrock y=127 — no block needed (first-time travel)</option>
-              <option value="256">📦 Overworld Build Limit y=255 — block pre-placed at destination</option>
+              <option value="128">Nether Bedrock (y=127) - No block needed</option>
+              <option value="256">Overworld Build Limit (y=255) - Pre-placed block</option>
             </select>
           </div>
 
-          <div class="info-banner" id="stop-mode-banner">
-            🧱 The pearl descends from y≈173 and is caught by the bedrock ceiling at y=127. No block needed.
-          </div>
-
           <div class="field-row">
-            <label for="c-max-tnt">Max Total TNT</label>
+            <label for="c-max-tnt">Max TNT</label>
             <input type="number" id="c-max-tnt" value="6688" min="1" step="1" />
           </div>
           <div class="field-row">
@@ -88,27 +67,22 @@
             <input type="number" id="c-max-ticks" value="500" min="1" step="1" />
           </div>
           <div class="field-row">
-            <label for="c-max-dist">Max Landing Error (blocks)</label>
+            <label for="c-max-dist">Max Error (blocks)</label>
             <input type="number" id="c-max-dist" value="0.5" min="0.01" step="0.1" />
           </div>
-
           <div class="field-row">
-            <label for="c-max-results">Max Results to Show</label>
+            <label for="c-max-results">Max Results</label>
             <input type="number" id="c-max-results" value="20" min="1" max="200" step="1" />
           </div>
 
-          <button class="btn-primary" id="btn-calculate">
-            <span>⚡</span> Calculate
-          </button>
+          <button class="btn-primary" id="btn-calculate">Calculate</button>
           <div id="calc-status" class="status-msg"></div>
         </div>
 
-        <!-- Results -->
-        <div class="card results-card">
-          <h2 class="card-title"><span>📊</span> Results</h2>
+        <div class="card">
+          <h2>Results</h2>
           <div id="results-placeholder" class="empty-state">
-            <div class="empty-icon">🧮</div>
-            <p>Enter coordinates and press <strong>Calculate</strong></p>
+            <p>Enter coordinates and click Calculate.</p>
           </div>
           <div id="results-wrap" style="display:none">
             <div class="results-meta" id="results-meta"></div>
@@ -123,7 +97,7 @@
                     <th>Total</th>
                     <th>Error</th>
                     <th>LR</th>
-                    <th>Select</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="results-tbody"></tbody>
@@ -131,44 +105,46 @@
             </div>
           </div>
         </div>
+
       </div>
 
-      <!-- Selected result details -->
       <div class="card detail-card" id="detail-card" style="display:none">
-        <h2 class="card-title"><span>🔍</span> Selected Result</h2>
+        <h2>Selected Result Details</h2>
         <div class="detail-grid" id="detail-grid"></div>
-        <button class="btn-secondary mt-sm" id="btn-send-to-encode">🎨 Send to Encoding Tab</button>
-        <button class="btn-secondary mt-sm" id="btn-send-to-sim">🔮 Send to Simulate Tab</button>
+        <div class="btn-group">
+          <button class="btn-secondary" id="btn-send-to-encode">Send to Encoding</button>
+          <button class="btn-secondary" id="btn-send-to-sim">Send to Simulator</button>
+        </div>
       </div>
     </section>
 
-    <!-- ══ TAB 2: SIMULATE PEARL ══ -->
+    <!-- TAB 2: SIMULATE -->
     <section class="tab-panel" id="tab-sim">
       <div class="two-col">
         <div class="card">
-          <h2 class="card-title"><span>🔮</span> Pearl State</h2>
+          <h2>Pearl State</h2>
           <div class="field-row">
             <label for="s-pos-x">Start X</label>
             <input type="number" id="s-pos-x" value="0" step="any" />
           </div>
           <div class="field-row">
             <label for="s-pos-y">Start Y</label>
-            <input type="number" id="s-pos-y" value="120" step="any" />
+            <input type="number" id="s-pos-y" value="173.875" step="any" />
           </div>
           <div class="field-row">
             <label for="s-pos-z">Start Z</label>
             <input type="number" id="s-pos-z" value="0" step="any" />
           </div>
           <div class="field-row">
-            <label for="s-vel-x">Velocity X (blk/tick)</label>
+            <label for="s-vel-x">Vel X</label>
             <input type="number" id="s-vel-x" value="0" step="any" />
           </div>
           <div class="field-row">
-            <label for="s-vel-y">Velocity Y (blk/tick)</label>
+            <label for="s-vel-y">Vel Y</label>
             <input type="number" id="s-vel-y" value="2.5" step="any" />
           </div>
           <div class="field-row">
-            <label for="s-vel-z">Velocity Z (blk/tick)</label>
+            <label for="s-vel-z">Vel Z</label>
             <input type="number" id="s-vel-z" value="8.0" step="any" />
           </div>
           <div class="field-row">
@@ -179,36 +155,29 @@
             <label for="s-max-ticks">Max Ticks</label>
             <input type="number" id="s-max-ticks" value="300" min="1" max="5000" step="1" />
           </div>
-          <button class="btn-primary" id="btn-simulate">
-            <span>▶</span> Simulate
-          </button>
+          <button class="btn-primary" id="btn-simulate">Run Simulation</button>
         </div>
 
         <div class="card">
-          <h2 class="card-title"><span>📈</span> Trajectory</h2>
+          <h2>Trajectory Plot</h2>
           <div id="sim-empty" class="empty-state">
-            <div class="empty-icon">🔮</div>
-            <p>Run a simulation to see the pearl path</p>
+            <p>Run a simulation to plot trajectory.</p>
           </div>
           <div id="sim-result-area" style="display:none">
             <div class="sim-stats" id="sim-stats"></div>
             <div class="canvas-wrap">
-              <canvas id="sim-canvas" width="460" height="300"></canvas>
-            </div>
-            <div class="canvas-legend">
-              <span class="legend-dot" style="background:#a78bfa"></span> Height (Y)
-              <span class="legend-dot ml" style="background:#34d399"></span> Horizontal dist
+              <canvas id="sim-canvas" width="460" height="260"></canvas>
             </div>
           </div>
         </div>
       </div>
 
       <div class="card" id="sim-data-card" style="display:none">
-        <h2 class="card-title"><span>📋</span> Tick-by-Tick Data</h2>
+        <h2>Tick Data</h2>
         <div class="table-scroll sim-table-wrap">
           <table class="data-table">
             <thead>
-              <tr><th>Tick</th><th>X</th><th>Y</th><th>Z</th><th>vX</th><th>vY</th><th>vZ</th><th>HorizDist</th></tr>
+              <tr><th>Tick</th><th>X</th><th>Y</th><th>Z</th><th>vX</th><th>vY</th><th>vZ</th><th>Dist</th></tr>
             </thead>
             <tbody id="sim-tbody"></tbody>
           </table>
@@ -216,12 +185,11 @@
       </div>
     </section>
 
-    <!-- ══ TAB 3: WOOL ENCODING ══ -->
+    <!-- TAB 3: ENCODING -->
     <section class="tab-panel" id="tab-enc">
       <div class="two-col">
         <div class="card">
-          <h2 class="card-title"><span>🎨</span> Manual Input</h2>
-          <p class="card-desc">Or select a result from the Calculate tab and use "Send to Encoding".</p>
+          <h2>Manual Input</h2>
           <div class="field-row">
             <label for="e-early">Early TNT</label>
             <input type="number" id="e-early" value="100" min="0" step="1" />
@@ -235,11 +203,11 @@
             <input type="number" id="e-upaccel" value="3" min="0" step="1" />
           </div>
           <div class="field-row">
-            <label for="e-direction">Direction (0–7)</label>
+            <label for="e-direction">Direction (0-7)</label>
             <input type="number" id="e-direction" value="0" min="0" max="7" step="1" />
           </div>
           <div class="field-row">
-            <label for="e-angle">Angle (0–3)</label>
+            <label for="e-angle">Angle (0-3)</label>
             <input type="number" id="e-angle" value="0" min="0" max="3" step="1" />
           </div>
           <div class="field-row">
@@ -249,165 +217,30 @@
               <option value="1">Yes</option>
             </select>
           </div>
-          <button class="btn-primary" id="btn-encode">
-            <span>🎨</span> Generate Encoding
-          </button>
+          <button class="btn-primary" id="btn-encode">Calculate Encoding</button>
         </div>
 
         <div class="card">
-          <h2 class="card-title"><span>🧱</span> Wool Block Layout</h2>
+          <h2>Wool Block Output</h2>
           <div id="enc-empty" class="empty-state">
-            <div class="empty-icon">🎨</div>
-            <p>Generate encoding to see wool block counts</p>
+            <p>Generate encoding to see wool counts.</p>
           </div>
           <div id="enc-output" style="display:none">
             <div class="enc-wool-grid" id="enc-grid"></div>
-            <div class="enc-formula mt-sm">
-              <strong>Encoding formulas:</strong><br>
-              Early/Late: big × 418 + medium × 11 + small<br>
-              Upaccel: blue × 8 + purple<br>
-              Direction: yellow = dir + (8 if long-range)
-            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ══ TAB 4: HOW IT WORKS ══ -->
+    <!-- TAB 4: HELP -->
     <section class="tab-panel" id="tab-help">
       <div class="card help-card">
-        <h2 class="card-title"><span>📖</span> How the 836 FTL v2 Works</h2>
-
-        <div class="help-section">
-          <h3>What is it?</h3>
-          <p>
-            The <strong>836 FTL v2</strong> is a Minecraft ender pearl cannon that uses TNT to fire
-            a pearl thousands of blocks in a single shot. In the Nether, distances are 8× compressed,
-            so 1,000 nether blocks = 8,000 overworld blocks of travel.
-          </p>
-        </div>
-
-        <div class="help-section">
-          <h3>Pearl Physics (every tick = 1/20 second)</h3>
-          <div class="code-block">motion.y  -= 0.03                    // gravity
-motion    *= Math.fround(0.99)        // air drag — f32 precision is critical!
-pos       += motion                   // position update</div>
-          <p>
-            The <code>Math.fround(0.99)</code> is <em>crucial</em>. Minecraft uses 32-bit floats internally.
-            If you use a full 64-bit 0.99, the pearl lands in a slightly wrong position.
-            This calculator uses <code>Math.fround</code> to exactly match Minecraft's behavior.
-          </p>
-        </div>
-
-        <div class="help-section">
-          <h3>TNT Explosion Impulse</h3>
-          <div class="code-block">eyePos = pearlPos + (0, PEARL_EYE_HEIGHT, 0)
-  where PEARL_EYE_HEIGHT = 0.25 × f32(0.85) ≈ 0.2125
-
-Δx = eyePos.x - tntPos.x
-Δy = eyePos.y - tntPos.y
-Δz = eyePos.z - tntPos.z
-dist = sqrt(Δx² + Δy² + Δz²)
-
-push = (1.0 - dist/8.0) × exposure / dist
-velocity += push × (Δx, Δy, Δz)</div>
-          <p>
-            Two TNT groups (Early and Late) fire at perpendicular angles to span the 2D horizontal
-            plane. An Upaccel group fires from below to give the pearl vertical lift.
-          </p>
-        </div>
-
-        <div class="help-section">
-          <h3>Why y=127 for First-Time Nether Travel?</h3>
-          <div class="info-box nether-box">
-            <strong>🧱 No block pre-placed?</strong> Aim at the Nether's bedrock ceiling (y=127).
-            The pearl hits the bedrock naturally — no pre-placed block required. You appear
-            just below the ceiling at your destination.
-          </div>
-          <p>
-            Normally the cannon shoots the pearl up to y=255 (overworld build limit) where you've
-            pre-placed a block. In the Nether, bedrock at y=127 acts as that natural "ceiling block."
-            This calculator searches for upaccel TNT counts whose peak Y is ≤ the stop height (128),
-            so only valid Nether-ceiling trajectories appear.
-          </p>
-        </div>
-
-        <div class="help-section">
-          <h3>Two TNT Layers (Early vs Late)</h3>
-          <p>
-            The cannon has 8 possible firing directions. Each direction uses a combination of
-            "early" and "late" TNT to span the exact angle to your destination:
-          </p>
-          <div class="dir-table">
-            <div class="dir-row header-row"><div>Dir #</div><div>Name</div><div>Quadrant</div></div>
-            <div class="dir-row"><div class="dir-num">0</div><div>WNW</div><div>West-Northwest</div></div>
-            <div class="dir-row"><div class="dir-num">1</div><div>ENE</div><div>East-Northeast</div></div>
-            <div class="dir-row"><div class="dir-num">2</div><div>NNW</div><div>North-Northwest</div></div>
-            <div class="dir-row"><div class="dir-num">3</div><div>NNE</div><div>North-Northeast</div></div>
-            <div class="dir-row"><div class="dir-num">4</div><div>SSE</div><div>South-Southeast</div></div>
-            <div class="dir-row"><div class="dir-num">5</div><div>SSW</div><div>South-Southwest</div></div>
-            <div class="dir-row"><div class="dir-num">6</div><div>ESE</div><div>East-Southeast</div></div>
-            <div class="dir-row"><div class="dir-num">7</div><div>WSW</div><div>West-Southwest</div></div>
-          </div>
-        </div>
-
-        <div class="help-section">
-          <h3>Wool Encoding</h3>
-          <p>TNT counts are encoded in a mixed-radix system using colored wool blocks:</p>
-          <div class="wool-explain">
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#e74c3c"></span>
-              <strong>Red</strong> — Early TNT ÷ 418 (big multiplier)
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#e67e22"></span>
-              <strong>Orange</strong> — (Early TNT mod 418) ÷ 11 (medium multiplier)
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#ff69b4"></span>
-              <strong>Pink</strong> — Early TNT mod 11 (small units)
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#85c1e9"></span>
-              <strong>Light Blue</strong> — Late TNT ÷ 418
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#2ecc71"></span>
-              <strong>Lime</strong> — (Late TNT mod 418) ÷ 11
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#1abc9c"></span>
-              <strong>Cyan</strong> — Late TNT mod 11
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#3498db"></span>
-              <strong>Blue</strong> — Upaccel ÷ 8
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#9b59b6"></span>
-              <strong>Purple</strong> — Upaccel mod 8
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#f1c40f"></span>
-              <strong>Yellow</strong> — Direction (0–7, +8 if long range)
-            </div>
-            <div class="wool-row">
-              <span class="wool-swatch" style="background:#7d3c98"></span>
-              <strong>Purple2</strong> — Angle within direction (0–3)
-            </div>
-          </div>
-        </div>
+        <h2>About 836 FTL v2</h2>
+        <p>This calculator computes TNT counts for the 836 FTL v2 pearl cannon, including Nether ceiling travel (stop at Y=127 bedrock).</p>
       </div>
     </section>
 
   </main>
-
-  <footer class="site-footer">
-    <p>
-      Based on <a href="https://garlic-bred.github.io/836-FTL-V2-Calculator/" target="_blank" rel="noopener">836 FTL v2 Calculator</a>
-      by garlic-bred — Pure JS port using <code>Math.fround</code> for f32 precision.
-    </p>
-  </footer>
 
   <script src="app.js" type="module"></script>
 </body>

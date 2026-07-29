@@ -570,19 +570,19 @@ document.getElementById('btn-calculate').addEventListener('click', () => {
   const stopHeight  = parseFloat(stopModeVal);
 
   if ([originX, originZ, destX, destZ, maxTnt, maxTicks, maxDist, stopHeight].some(isNaN)) {
-    statusEl.textContent = '⚠ Please fill in all fields with valid numbers.';
+    statusEl.textContent = 'Please fill in all fields with valid numbers.';
     statusEl.className = 'status-msg error';
     return;
   }
 
   if (destX === originX && destZ === originZ) {
-    statusEl.textContent = '⚠ Origin and destination are the same.';
+    statusEl.textContent = 'Origin and destination are the same.';
     statusEl.className = 'status-msg error';
     return;
   }
 
   const horizDist = Math.sqrt((destX-originX)**2 + (destZ-originZ)**2);
-  statusEl.innerHTML = '<span class="spinning">⚡</span> Calculating…';
+  statusEl.textContent = 'Calculating...';
   statusEl.className = 'status-msg info';
 
   // Run calculation on next frame to allow UI update
@@ -594,7 +594,7 @@ document.getElementById('btn-calculate').addEventListener('click', () => {
       const elapsed = (performance.now() - t0).toFixed(0);
 
       if (out.error) {
-        statusEl.textContent = '❌ ' + out.error;
+        statusEl.textContent = out.error;
         statusEl.className = 'status-msg error';
         return;
       }
@@ -642,11 +642,11 @@ document.getElementById('btn-calculate').addEventListener('click', () => {
       phEl.style.display = 'none';
       wrapEl.style.display = 'block';
 
-      statusEl.textContent = `✓ ${out.results.length} result${out.results.length !== 1 ? 's' : ''} found`;
+      statusEl.textContent = `${out.results.length} result${out.results.length !== 1 ? 's' : ''} found.`;
       statusEl.className = 'status-msg ok';
 
     } catch (err) {
-      statusEl.textContent = '❌ Error: ' + err.message;
+      statusEl.textContent = 'Error: ' + err.message;
       statusEl.className = 'status-msg error';
       console.error(err);
     }
