@@ -9,19 +9,27 @@ const PEARL_EYE_HEIGHT = 0.25 * F32(0.85);
 const EXPLOSION_HEIGHT = F32(0.98) * F32(0.0625);
 const BASKET_TNT_Y = 173.875 - F32(0.98) - 0.04;
 const PEARL_Y = 173.875;
-const UPACCEL_TNT_Y = BASKET_TNT_Y - EXPLOSION_HEIGHT;
-const UPACCEL_TNT_LONGRANGE_Y = UPACCEL_TNT_Y - F32(0.98);
-const PEARL_HORIZONTAL_OFFSET = 0.5;
+const PEARL_HORIZONTAL_OFFSET = 0.51;
 const PEARL_DECAY = F32(0.99);
 const PEARL_Y_MOTION = F32(-0.0784000015258789);
 
+const ALIGNMENT_TNT_Y = 172.79375;
+const ALIGNMENT_TNT_OFFSET = 1.8125;
+const BASKET_UPACCEL_TNT = 0;
+const BASKET_UPACCEL_TNT_Y = 169.0;
+const BASKET_TNT_Y_MOTION = -0.04 * 0.98;
+
+const UPACCEL_TNT_Y = 248.53626183321285;
+const UPACCEL_TNT_LONGRANGE_Y = 250.89563683321285;
+const MAX_UPACCEL_TNT = 31;
+const PEARL_STOP_HEIGHT = 128.0;
+
 const NUM_OF_ANGLES = 4;
-const MAX_UPACCEL_TNT = 40;
 
 const SIZE_CAPS = {
-  full: { maxTnt: 6688 },
-  half: { maxTnt: 3344 },
-  quarter: { maxTnt: 1672 },
+  full: { maxTnt: 6688, maxPerSide: 3344 },
+  half: { maxTnt: 3344, maxPerSide: 1672 },
+  quarter: { maxTnt: 1672, maxPerSide: 836 },
 };
 
 class Vec3 {
@@ -31,38 +39,24 @@ class Vec3 {
   add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
   sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
   multiply(n) { return new Vec3(this.x * n, this.y * n, this.z * n); }
+  lengthHorizontal() { return Math.sqrt(this.x**2 + this.z**2); }
   length() { return Math.sqrt(this.x**2 + this.y**2 + this.z**2); }
+  copy() { return new Vec3(this.x, this.y, this.z); }
 }
 
-function calcTntVelocity(tntPos, eyePos, exposure, count) {
-  const dx = eyePos.x - tntPos.x;
-  const dy = eyePos.y - tntPos.y;
-  const dz = eyePos.z - tntPos.z;
-
-  const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+function calcExplosionVelocity(tntPos, targetPos, eyeHeight, exposure) {
+  const explosionPos = tntPos.add(new Vec3(0, EXPLOSION_HEIGHT, 0));
+  const tPos = targetPos.add(new Vec3(0, eyeHeight, 0));
+  const direction = tPos.sub(explosionPos);
+  const dist = direction.length();
   if (dist >= 8.0 || dist === 0) return new Vec3(0,0,0);
-
   const push = (1.0 - dist / 8.0) * exposure / dist;
-  return new Vec3(dx * push * count, dy * push * count, dz * push * count);
+  return direction.multiply(push);
 }
 
-const DIR = { WNW: 0, ENE: 1, NNW: 2, NNE: 3, SSE: 4, SSW: 5, ESE: 6, WSW: 7 };
 const DIR_NAMES = ['WNW','ENE','NNW','NNE','SSE','SSW','ESE','WSW'];
 
 function calculateDirection(vec) {
-  let vecAngle = Math.atan2(vec.z, vec.x) * (180 / Math.PI);
-  if (vecAngle < 0) vecAngle += 360;
-
-  let direction;
-  if      (vecAngle <  45) direction = DIR.ESE;
-  else if (vecAngle <  90) direction = DIR.SSE;
-  else if (vecAngle < 135) direction = DIR.SSW;
-  else if (vecAngle < 180) direction = DIR.WSW;
-  else if (vecAngle < 225) direction = DIR.WNW;
-  else if (vecAngle < 270) direction = DIR.NNW;
-  else if (vecAngle < 315) direction = DIR.NNE;
-  else                      direction = DIR.ENE;
-
   const cos45 = Math.cos(Math.PI / 4);
   const sin45 = Math.sin(Math.PI / 4);
   const rx = vec.x * cos45 - vec.z * sin45;
@@ -70,176 +64,192 @@ function calculateDirection(vec) {
   const scale = NUM_OF_ANGLES / Math.max(Math.abs(rx), Math.abs(rz));
   const angle = Math.floor(Math.min(Math.abs(rx * scale), Math.abs(rz * scale)));
 
+  let vecAngle = Math.atan2(vec.z, vec.x) * (180 / Math.PI);
+  if (vecAngle < 0) vecAngle += 360;
+
+  let direction;
+  if      (vecAngle <  45) direction = 6;
+  else if (vecAngle <  90) direction = 4;
+  else if (vecAngle < 135) direction = 5;
+  else if (vecAngle < 180) direction = 7;
+  else if (vecAngle < 225) direction = 0;
+  else if (vecAngle < 270) direction = 2;
+  else if (vecAngle < 315) direction = 3;
+  else                      direction = 1;
+
   return { direction, angle };
 }
 
-function calculateTntVectors(distanceVec, dirResult) {
-  const pearlX = 0.51, pearlZ = 0.51;
-  const eyeY = PEARL_Y + PEARL_EYE_HEIGHT;
-  const eyePos = new Vec3(pearlX, eyeY, pearlZ);
+function calculateTntVectors(vec, dirResult) {
+  const direction = dirResult.direction;
+  const angle = dirResult.angle;
 
-  // TNT offset relative to pearl:
-  // Offset -0.5 pushes POSITIVE (+X / +Z)
-  // Offset +0.5 pushes NEGATIVE (-X / -Z)
-  const ARM_PAIRS = [
-    [[+0.5, +0.5], [+0.5, -0.5]],  // 0 WNW (-X, -Z and -X, +Z)
-    [[-0.5, +0.5], [-0.5, -0.5]],  // 1 ENE (+X, -Z and +X, +Z)
-    [[+0.5, +0.5], [-0.5, +0.5]],  // 2 NNW (-Z, -X and -Z, +X)
-    [[-0.5, +0.5], [+0.5, +0.5]],  // 3 NNE (-Z, +X and -Z, -X)
-    [[-0.5, -0.5], [+0.5, -0.5]],  // 4 SSE (+Z, +X and +Z, -X)
-    [[+0.5, -0.5], [-0.5, -0.5]],  // 5 SSW (+Z, -X and +Z, +X)
-    [[-0.5, -0.5], [-0.5, +0.5]],  // 6 ESE (+X, +Z and +X, -Z)
-    [[+0.5, -0.5], [+0.5, +0.5]],  // 7 WSW (-X, +Z and -X, -Z)
-  ];
+  const firstAlignmentTntPos = new Vec3(1, 0, 1);
+  if (vec.x < 0) firstAlignmentTntPos.x = -1;
+  if (vec.z < 0) firstAlignmentTntPos.z = -1;
 
-  const [ea, la] = ARM_PAIRS[dirResult.direction];
-  const earlyTntPos = new Vec3(pearlX + ea[0], BASKET_TNT_Y, pearlZ + ea[1]);
-  const lateTntPos  = new Vec3(pearlX + la[0], BASKET_TNT_Y, pearlZ + la[1]);
+  const secondAlignmentTntPos = firstAlignmentTntPos.copy();
+  if (Math.abs(vec.x) > Math.abs(vec.z)) secondAlignmentTntPos.z *= -1;
+  else secondAlignmentTntPos.x *= -1;
 
-  const earlyVec = calcTntVelocity(earlyTntPos, eyePos, 1.0, 1);
-  const lateVec  = calcTntVelocity(lateTntPos,  eyePos, 1.0, 1);
+  const firstPos  = firstAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(0, ALIGNMENT_TNT_Y, 0));
+  const secondPos = secondAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(0, ALIGNMENT_TNT_Y, 0));
+
+  const earlyTnt = { pos: new Vec3(0, BASKET_TNT_Y, 0), motion: new Vec3(0, BASKET_TNT_Y_MOTION, 0) };
+  const lateTnt  = { pos: new Vec3(0, BASKET_TNT_Y, 0), motion: new Vec3(0, BASKET_TNT_Y_MOTION, 0) };
+
+  const ev1 = calcExplosionVelocity(firstPos, earlyTnt.pos, 0, F32(1.0 / 27.0)).multiply(NUM_OF_ANGLES);
+  const ev2 = calcExplosionVelocity(secondPos, earlyTnt.pos, 0, F32(1.0 / 27.0)).multiply(angle);
+  earlyTnt.motion = earlyTnt.motion.add(ev1).add(ev2);
+
+  const lv1 = calcExplosionVelocity(firstPos, lateTnt.pos, 0, F32(1.0 / 27.0)).multiply(NUM_OF_ANGLES);
+  const lv2 = calcExplosionVelocity(secondPos, lateTnt.pos, 0, F32(1.0 / 27.0)).multiply(angle + 1);
+  lateTnt.motion = lateTnt.motion.add(lv1).add(lv2);
+
+  earlyTnt.motion = new Vec3(earlyTnt.motion.x, earlyTnt.motion.y - 0.04, earlyTnt.motion.z).multiply(F32(0.98));
+  lateTnt.motion  = new Vec3(lateTnt.motion.x,  lateTnt.motion.y - 0.04,  lateTnt.motion.z).multiply(F32(0.98));
+
+  earlyTnt.pos = earlyTnt.pos.add(earlyTnt.motion);
+  lateTnt.pos  = lateTnt.pos.add(lateTnt.motion);
+
+  const pearlPos = new Vec3(PEARL_HORIZONTAL_OFFSET, PEARL_Y, PEARL_HORIZONTAL_OFFSET);
+
+  const earlyVec = calcExplosionVelocity(earlyTnt.pos, pearlPos, PEARL_EYE_HEIGHT, F32(1.0));
+  const lateVec  = calcExplosionVelocity(lateTnt.pos,  pearlPos, PEARL_EYE_HEIGHT, F32(1.0));
 
   return { earlyVec, lateVec };
 }
 
-function calculatePossibleTicks(stopHeight, maxTicks = 500) {
-  const results = [];
-  const goingUp = stopHeight > PEARL_Y;
+function calculatePossibleTicksList(upaccelTntY) {
+  const possibleTicks = [];
+  const pearlPos = new Vec3(PEARL_HORIZONTAL_OFFSET, PEARL_Y, PEARL_HORIZONTAL_OFFSET);
+  const motionPerTnt = calcExplosionVelocity(new Vec3(0, upaccelTntY, 0), pearlPos, PEARL_EYE_HEIGHT, F32(1.0));
 
-  for (let longRange of [false, true]) {
-    for (let upaccelTnt = 0; upaccelTnt <= MAX_UPACCEL_TNT; upaccelTnt++) {
-      const tntY = longRange ? UPACCEL_TNT_LONGRANGE_Y : UPACCEL_TNT_Y;
+  for (let n = 0; n <= MAX_UPACCEL_TNT; n++) {
+    let ticks = 0;
+    let pPos = new Vec3(pearlPos.x, pearlPos.y, pearlPos.z);
+    let pMotion = new Vec3(0, PEARL_Y_MOTION, 0).add(motionPerTnt.multiply(n));
 
-      const pearlX = 0.51, pearlZ = 0.51;
-      const pearlEyeY = PEARL_Y + PEARL_EYE_HEIGHT;
-
-      const tntPos = new Vec3(pearlX - PEARL_HORIZONTAL_OFFSET, tntY, pearlZ - PEARL_HORIZONTAL_OFFSET);
-      const eyePos = new Vec3(pearlX, pearlEyeY, pearlZ);
-
-      const upaccelV = calcTntVelocity(tntPos, eyePos, 1.0, upaccelTnt);
-
-      let vy = PEARL_Y_MOTION + upaccelV.y;
-      let y  = PEARL_Y;
-
-      for (let tick = 1; tick <= maxTicks; tick++) {
-        vy -= 0.03;
-        vy  = F32(vy * F32(0.99));
-        y  += vy;
-
-        if (goingUp ? (y >= stopHeight) : (y <= stopHeight)) {
-          results.push({ tick, upaccelTnt, longRange });
-          break;
-        }
-
-        if (goingUp && vy < 0 && y < PEARL_Y - 5) break;
-        if (!goingUp && y < stopHeight - 200) break;
-      }
+    while (pPos.y > PEARL_STOP_HEIGHT) {
+      pMotion = new Vec3(pMotion.x, pMotion.y - 0.03, pMotion.z);
+      pMotion = new Vec3(F32(pMotion.x * F32(0.99)), F32(pMotion.y * F32(0.99)), F32(pMotion.z * F32(0.99)));
+      pPos = pPos.add(pMotion);
+      ticks++;
     }
+    possibleTicks.push(ticks - 1);
   }
-
-  return results;
+  return possibleTicks;
 }
 
-function simulatePearl(pos, motion, stopHeight, maxTicks = 500) {
-  const snapshots = [];
-  let p = new Vec3(pos.x, pos.y, pos.z);
-  let m = new Vec3(motion.x, motion.y, motion.z);
-  const goingUp = stopHeight > pos.y;
-
-  for (let tick = 1; tick <= maxTicks; tick++) {
-    m = new Vec3(m.x, m.y - 0.03, m.z);
-    m = new Vec3(
-      F32(m.x * PEARL_DECAY),
-      F32(m.y * PEARL_DECAY),
-      F32(m.z * PEARL_DECAY),
+class Pearl {
+  constructor(pos, motion) {
+    this.pos = pos;
+    this.motion = motion;
+  }
+  tick() {
+    this.motion = this.motion.add(new Vec3(0, -0.03, 0));
+    this.motion = new Vec3(
+      F32(this.motion.x * F32(0.99)),
+      F32(this.motion.y * F32(0.99)),
+      F32(this.motion.z * F32(0.99))
     );
-    p = p.add(m);
-
-    snapshots.push({ tick, pos: new Vec3(p.x, p.y, p.z), motion: new Vec3(m.x, m.y, m.z) });
-
-    if (goingUp  && p.y >= stopHeight) break;
-    if (!goingUp && p.y <= stopHeight) break;
+    this.pos = this.pos.add(this.motion);
   }
-
-  return snapshots;
 }
 
-function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 50, maxResults = 50 }) {
-  const pearlX = Math.floor(originX) + 0.51;
-  const pearlZ = Math.floor(originZ) + 0.51;
+function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHeight = 128, maxTnt = 6688, maxTicks = 300, maxDistance = 50, maxResults = 50 }) {
+  const pearlX = Math.floor(originX) + PEARL_HORIZONTAL_OFFSET;
+  const pearlZ = Math.floor(originZ) + PEARL_HORIZONTAL_OFFSET;
 
-  const distVec = new Vec3(destX - pearlX, 0, destZ - pearlZ);
+  const pearlPos = new Vec3(pearlX, PEARL_Y, pearlZ);
+  const destPos  = new Vec3(destX, 0, destZ);
+
+  const distVec = destPos.sub(pearlPos);
   const dirResult = calculateDirection(distVec);
   const { earlyVec, lateVec } = calculateTntVectors(distVec, dirResult);
-  const possibleTicks = calculatePossibleTicks(stopHeight, maxTicks);
 
-  if (possibleTicks.length === 0) {
-    return { error: `No valid upaccel configs found for stop height y=${stopHeight}.` };
-  }
+  const possibleTicks = calculatePossibleTicksList(UPACCEL_TNT_LONGRANGE_Y)
+    .concat(calculatePossibleTicksList(UPACCEL_TNT_Y));
+
+  const det = earlyVec.z * lateVec.x - lateVec.z * earlyVec.x;
+  if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
+
+  const earlyTntExact = (distVec.z * lateVec.x - distVec.x * lateVec.z) / det;
+  const lateTntExact  = (distVec.x - earlyTntExact * earlyVec.x) / lateVec.x;
 
   const results = [];
   let divider = 0;
-
-  const tickMap = new Map();
-  for (const t of possibleTicks) {
-    if (!tickMap.has(t.tick)) tickMap.set(t.tick, []);
-    tickMap.get(t.tick).push(t);
-  }
-
-  const det = earlyVec.x * lateVec.z - earlyVec.z * lateVec.x;
-  if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
+  let tryAgain = false;
 
   for (let tick = 1; tick <= maxTicks; tick++) {
     divider += Math.pow(F32(0.99), tick);
 
-    if (!tickMap.has(tick)) continue;
-    const configs = tickMap.get(tick);
+    let upaccelTnt = 0;
+    let longRange = false;
 
-    const targetX = distVec.x / divider;
-    const targetZ = distVec.z / divider;
+    const idx = possibleTicks.indexOf(tick);
+    if (idx !== -1) {
+      upaccelTnt = idx % (MAX_UPACCEL_TNT + 1);
+      longRange  = idx <= (MAX_UPACCEL_TNT + 1);
+    } else {
+      if (!tryAgain) continue;
+    }
+    tryAgain = false;
 
-    const earlyExact = (targetX * lateVec.z - targetZ * lateVec.x) / det;
-    const lateExact  = (earlyVec.x * targetZ - earlyVec.z * targetX) / det;
+    const earlyBase = Math.round(earlyTntExact / divider);
+    const lateBase  = Math.round(lateTntExact / divider);
 
-    const earlyBase = Math.round(earlyExact);
-    const lateBase  = Math.round(lateExact);
+    for (let a = -2; a <= 2; a++) {
+      for (let b = -2; b <= 2; b++) {
+        const earlyTnt = earlyBase + a;
+        const lateTnt  = lateBase  + b;
 
-    for (const cfg of configs) {
-      // Search window +-10 around base solution
-      for (let a = -30; a <= 30; a++) {
-        for (let b = -30; b <= 30; b++) {
-          const earlyTnt = earlyBase + a;
-          const lateTnt  = lateBase  + b;
+        if (earlyTnt < 0 || lateTnt < 0) continue;
 
-          if (earlyTnt < 0 || lateTnt < 0) continue;
+        const totalTnt = earlyTnt + lateTnt + upaccelTnt;
+        if (maxTnt > 0 && totalTnt > maxTnt) continue;
 
-          const totalTnt = earlyTnt + lateTnt + cfg.upaccelTnt;
-          if (maxTnt > 0 && totalTnt > maxTnt) continue;
+        const tntY = longRange ? UPACCEL_TNT_LONGRANGE_Y : UPACCEL_TNT_Y;
+        const upaccelVel = calcExplosionVelocity(new Vec3(pearlX - PEARL_HORIZONTAL_OFFSET, tntY, pearlZ - PEARL_HORIZONTAL_OFFSET), pearlPos, PEARL_EYE_HEIGHT, F32(1.0)).multiply(upaccelTnt);
 
-          const sim = buildSimulation({ pearlX, pearlZ, earlyTnt, lateTnt, earlyVec, lateVec, upaccelTnt: cfg.upaccelTnt, longRange: cfg.longRange, tick, stopHeight });
-          const landing = sim.snapshots[sim.snapshots.length - 1];
-          if (!landing) continue;
+        const initMotion = new Vec3(
+          earlyVec.x * earlyTnt + lateVec.x * lateTnt,
+          PEARL_Y_MOTION + upaccelVel.y,
+          earlyVec.z * earlyTnt + lateVec.z * lateTnt,
+        );
 
-          const dx = landing.pos.x - destX;
-          const dz = landing.pos.z - destZ;
-          const error = Math.sqrt(dx*dx + dz*dz);
+        const pearl = new Pearl(new Vec3(pearlPos.x, pearlPos.y, pearlPos.z), initMotion);
+        for (let t = 0; t < tick; t++) pearl.tick();
 
-          if (error > maxDistance) continue;
+        const distance = pearl.pos.sub(destPos).lengthHorizontal();
+        if (distance > maxDistance) continue;
 
-          const distanceVal = Math.sqrt((destX - originX)**2 + (destZ - originZ)**2);
-
-          results.push({
-            tick, earlyTnt, lateTnt, upaccelTnt: cfg.upaccelTnt, totalTnt, error,
-            distance: distanceVal,
-            longRange: cfg.longRange, direction: dirResult.direction, angle: dirResult.angle,
-            landing: landing.pos, sim,
-          });
+        if (pearl.pos.y < PEARL_STOP_HEIGHT) {
+          tryAgain = true;
+          continue;
         }
+
+        pearl.tick();
+        if (pearl.pos.y >= PEARL_STOP_HEIGHT) {
+          tryAgain = true;
+          continue;
+        }
+
+        const landingPos = pearl.pos;
+        const distanceVal = Math.sqrt((destX - originX)**2 + (destZ - originZ)**2);
+
+        results.push({
+          tick, earlyTnt, lateTnt, upaccelTnt, totalTnt, error: distance,
+          distance: distanceVal,
+          longRange, direction: dirResult.direction, angle: dirResult.angle,
+          landing: landingPos,
+          sim: { initMotion, snapshots: [{ tick, pos: landingPos, motion: pearl.motion }] }
+        });
       }
     }
   }
 
-  results.sort((a, b) => a.totalTnt - b.totalTnt || a.error - b.error);
+  results.sort((a, b) => a.error - b.error || a.totalTnt - b.totalTnt);
 
   const unique = [];
   const seen = new Set();
@@ -252,26 +262,6 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
   }
 
   return { results: unique.slice(0, maxResults), direction: dirResult };
-}
-
-function buildSimulation({ pearlX, pearlZ, earlyTnt, lateTnt, earlyVec, lateVec, upaccelTnt, longRange, tick, stopHeight }) {
-  const tntY = longRange ? UPACCEL_TNT_LONGRANGE_Y : UPACCEL_TNT_Y;
-  const pearlEyeY = PEARL_Y + PEARL_EYE_HEIGHT;
-
-  const tntPos = new Vec3(pearlX - PEARL_HORIZONTAL_OFFSET, tntY, pearlZ - PEARL_HORIZONTAL_OFFSET);
-  const eyePos = new Vec3(pearlX, pearlEyeY, pearlZ);
-  const upaccelVel = calcTntVelocity(tntPos, eyePos, 1.0, upaccelTnt);
-
-  const initMotion = new Vec3(
-    earlyVec.x * earlyTnt + lateVec.x * lateTnt,
-    PEARL_Y_MOTION + upaccelVel.y,
-    earlyVec.z * earlyTnt + lateVec.z * lateTnt,
-  );
-
-  const startPos = new Vec3(pearlX, PEARL_Y, pearlZ);
-  const snapshots = simulatePearl(startPos, initMotion, stopHeight, tick + 50);
-
-  return { snapshots, initMotion, startPos };
 }
 
 function calcBits(tnt) {
@@ -403,9 +393,9 @@ if (typeof document !== 'undefined') {
             const r = out.results[i];
             const tr = document.createElement('tr');
             tr.dataset.idx = i;
-            const posStr = `${r.landing.x.toFixed(1)}, ${r.landing.z.toFixed(1)}`;
+            const posStr = `(${r.landing.x.toFixed(3)}, ${r.landing.y.toFixed(3)}, ${r.landing.z.toFixed(3)})`;
             tr.innerHTML = `
-              <td>${r.distance.toFixed(1)} blks</td>
+              <td>${r.error.toFixed(3)}</td>
               <td>${posStr}</td>
               <td>${r.tick}</td>
               <td>${r.earlyTnt}</td>
@@ -420,8 +410,7 @@ if (typeof document !== 'undefined') {
             btn.addEventListener('click', () => selectResult(parseInt(btn.dataset.idx, 10)));
           });
 
-          const d = DIR_NAMES[out.direction?.direction ?? 0];
-          metaEl.textContent = `Found ${out.results.length} results in ${elapsed}ms | Dist: ${horizDist.toFixed(1)} blks | Direction: ${d}`;
+          metaEl.textContent = `${out.results.length} results found.`;
 
           phEl.style.display = 'none';
           wrapEl.style.display = 'block';
@@ -459,7 +448,7 @@ function selectResult(idx) {
     { label: 'Late TNT',      value: r.lateTnt,                      cls: '' },
     { label: 'Upaccel TNT',   value: r.upaccelTnt,                   cls: '' },
     { label: 'Ticks in Air',  value: r.tick,                         cls: '' },
-    { label: 'Landing Error', value: r.error.toFixed(4) + ' blks',   cls: r.error > 10.0 ? 'warn' : '' },
+    { label: 'Landing Error', value: r.error.toFixed(4) + ' blocks', cls: r.error > 10.0 ? 'warn' : '' },
     { label: 'Long Range',    value: r.longRange ? 'Yes' : 'No',     cls: r.longRange ? 'warn' : '' },
     { label: 'Direction',     value: `${DIR_NAMES[r.direction]} (${r.direction})`, cls: '' },
     { label: 'Angle Index',   value: r.angle,                        cls: '' },
@@ -511,128 +500,4 @@ function renderWoolEncoding(encoding) {
   const encOutput = document.getElementById('enc-output');
   if (encEmpty) encEmpty.style.display = 'none';
   if (encOutput) encOutput.style.display = 'block';
-}
-
-if (typeof document !== 'undefined') {
-  document.getElementById('btn-send-to-encode')?.addEventListener('click', () => {
-    if (!selectedResult) return;
-    document.querySelector('[data-tab="enc"]').click();
-  });
-
-  document.getElementById('btn-send-to-sim')?.addEventListener('click', () => {
-    if (!selectedResult) return;
-    const r = selectedResult;
-    const pearlX = Math.floor(parseFloat(document.getElementById('c-origin-x').value)) + 0.51;
-    const pearlZ = Math.floor(parseFloat(document.getElementById('c-origin-z').value)) + 0.51;
-    document.getElementById('s-pos-x').value = pearlX;
-    document.getElementById('s-pos-y').value = PEARL_Y;
-    document.getElementById('s-pos-z').value = pearlZ;
-    document.getElementById('s-vel-x').value = r.sim.initMotion.x.toFixed(6);
-    document.getElementById('s-vel-y').value = r.sim.initMotion.y.toFixed(6);
-    document.getElementById('s-vel-z').value = r.sim.initMotion.z.toFixed(6);
-    document.getElementById('s-stop-y').value = parseFloat(document.getElementById('c-stop-mode').value);
-
-    document.querySelector('[data-tab="sim"]').click();
-    document.getElementById('btn-simulate').click();
-  });
-
-  document.getElementById('btn-simulate')?.addEventListener('click', () => {
-    const posX   = parseFloat(document.getElementById('s-pos-x').value);
-    const posY   = parseFloat(document.getElementById('s-pos-y').value);
-    const posZ   = parseFloat(document.getElementById('s-pos-z').value);
-    const velX   = parseFloat(document.getElementById('s-vel-x').value);
-    const velY   = parseFloat(document.getElementById('s-vel-y').value);
-    const velZ   = parseFloat(document.getElementById('s-vel-z').value);
-    const stopY  = parseFloat(document.getElementById('s-stop-y').value);
-    const maxT   = parseInt(document.getElementById('s-max-ticks').value, 10);
-
-    if ([posX, posY, posZ, velX, velY, velZ, stopY, maxT].some(isNaN)) return;
-
-    const snapshots = simulatePearl(new Vec3(posX, posY, posZ), new Vec3(velX, velY, velZ), stopY, maxT);
-    const last   = snapshots[snapshots.length - 1];
-    const maxY   = snapshots.reduce((m, s) => Math.max(m, s.pos.y), posY);
-    const simStats = document.getElementById('sim-stats');
-    simStats.innerHTML = `
-      <div class="stat-box"><div class="stat-label">Ticks</div><div class="stat-value">${last.tick}</div></div>
-      <div class="stat-box"><div class="stat-label">Peak Y</div><div class="stat-value">${maxY.toFixed(2)}</div></div>
-      <div class="stat-box"><div class="stat-label">Final X,Z</div><div class="stat-value">${last.pos.x.toFixed(2)}, ${last.pos.z.toFixed(2)}</div></div>
-    `;
-
-    drawTrajectory(snapshots, posY, stopY);
-
-    const tbody = document.getElementById('sim-tbody');
-    tbody.innerHTML = '';
-    const step = snapshots.length > 200 ? Math.ceil(snapshots.length / 200) : 1;
-    for (let i = 0; i < snapshots.length; i += step) {
-      const s = snapshots[i];
-      const hd = Math.sqrt((s.pos.x - posX)**2 + (s.pos.z - posZ)**2);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${s.tick}</td><td>${s.pos.x.toFixed(4)}</td><td>${s.pos.y.toFixed(4)}</td><td>${s.pos.z.toFixed(4)}</td><td>${s.motion.x.toFixed(6)}</td><td>${s.motion.y.toFixed(6)}</td><td>${s.motion.z.toFixed(6)}</td><td>${hd.toFixed(2)}</td>`;
-      tbody.appendChild(tr);
-    }
-
-    document.getElementById('sim-empty').style.display = 'none';
-    document.getElementById('sim-result-area').style.display = 'block';
-    document.getElementById('sim-data-card').style.display = 'block';
-  });
-}
-
-function drawTrajectory(snapshots, startY, stopY) {
-  const canvas = document.getElementById('sim-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  if (!snapshots.length) return;
-
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 8; i++) {
-    ctx.beginPath(); ctx.moveTo(i * W/8, 0); ctx.lineTo(i * W/8, H); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, i * H/8); ctx.lineTo(W, i * H/8); ctx.stroke();
-  }
-
-  const maxTick = snapshots[snapshots.length - 1].tick;
-  const minY = Math.min(startY, ...snapshots.map(s => s.pos.y));
-  const maxY = Math.max(stopY, ...snapshots.map(s => s.pos.y)) + 5;
-  const startX = snapshots[0]?.pos.x ?? 0;
-  const startZ = snapshots[0]?.pos.z ?? 0;
-  const maxHD  = Math.max(1, ...snapshots.map(s => Math.sqrt((s.pos.x-startX)**2 + (s.pos.z-startZ)**2)));
-
-  const pad = 36;
-  const px  = (tick) => pad + (tick / maxTick) * (W - 2*pad);
-  const pyY = (y)    => H - pad - ((y - minY) / (maxY - minY)) * (H - 2*pad);
-  const pyH = (hd)   => H - pad - (hd / maxHD) * (H - 2*pad);
-
-  ctx.strokeStyle = 'rgba(200,168,75,0.4)';
-  ctx.setLineDash([5,4]);
-  ctx.lineWidth = 1;
-  const sy = pyY(stopY);
-  ctx.beginPath(); ctx.moveTo(pad, sy); ctx.lineTo(W - pad, sy); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = 'rgba(200,168,75,0.7)';
-  ctx.font = '10px sans-serif';
-  ctx.fillText(`y=${stopY}`, W - pad - 38, sy - 4);
-
-  ctx.strokeStyle = '#c8a84b';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  snapshots.forEach((s, i) => {
-    const x = px(s.tick), y = pyY(s.pos.y);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  ctx.strokeStyle = '#5a9a8a';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  snapshots.forEach((s, i) => {
-    const hd = Math.sqrt((s.pos.x - startX)**2 + (s.pos.z - startZ)**2);
-    const x = px(s.tick), y = pyH(hd);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.stroke();
 }
