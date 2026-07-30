@@ -2,101 +2,114 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>836 FTL v2 Nether Pearl Calculator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>836 FTL v2 Calculator</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-brand">
+        <h1>836 FTL v2 Calculator</h1>
+        <span class="subtitle">Nether Pearl Trajectory</span>
+      </div>
+      <nav class="nav-tabs" role="tablist">
+        <button class="tab-btn active" data-tab="calc" role="tab" aria-selected="true">Calculate TNT</button>
+        <button class="tab-btn" data-tab="sim" role="tab" aria-selected="false">Pearl Simulate</button>
+        <button class="tab-btn" data-tab="enc" role="tab" aria-selected="false">TNT Encoding</button>
+        <button class="tab-btn" data-tab="help" role="tab" aria-selected="false">Info</button>
+      </nav>
+    </header>
 
-  <header class="site-header">
-    <div class="header-inner">
-      <h1>836 FTL v2 Calculator</h1>
-      <span class="sub">Nether Pearl Trajectory</span>
-    </div>
-  </header>
-
-  <main class="container">
-
-    <nav class="tabs">
-      <button class="tab-btn active" data-tab="calc">Calculate TNT</button>
-      <button class="tab-btn" data-tab="sim">Simulate Pearl</button>
-      <button class="tab-btn" data-tab="enc">Wool Encoding</button>
-      <button class="tab-btn" data-tab="help">Info</button>
-    </nav>
-
-    <!-- TAB 1: CALCULATE -->
-    <section class="tab-panel active" id="tab-calc">
-      <div class="two-col">
-
-        <div class="card">
-          <h2>Cannon Position</h2>
-          <div class="field-row">
-            <label for="c-origin-x">Pearl X</label>
-            <input type="number" id="c-origin-x" value="-119" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="c-origin-z">Pearl Z</label>
-            <input type="number" id="c-origin-z" value="40" step="1" />
-          </div>
-
-          <h2 class="section-gap">Destination</h2>
-          <div class="field-row">
-            <label for="c-dest-x">Destination X</label>
-            <input type="number" id="c-dest-x" value="5000" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="c-dest-z">Destination Z</label>
-            <input type="number" id="c-dest-z" value="0" step="1" />
+    <main class="app-main">
+      <!-- TAB 1: CALCULATOR -->
+      <section class="tab-panel active" id="tab-calc">
+        <div class="calculator-grid">
+          <!-- CANNON INFORMATION -->
+          <div class="card">
+            <h2>Cannon Information</h2>
+            <div class="field-row">
+              <label for="c-origin-x">Origin X</label>
+              <input type="number" id="c-origin-x" value="0" step="1" />
+            </div>
+            <div class="field-row">
+              <label for="c-origin-z">Origin Z</label>
+              <input type="number" id="c-origin-z" value="0" step="1" />
+            </div>
+            <div class="field-row">
+              <label for="c-cannon-size">Cannon Size</label>
+              <select id="c-cannon-size">
+                <option value="full" selected>Full size</option>
+                <option value="half">Half size</option>
+                <option value="quarter">1/4 size</option>
+              </select>
+            </div>
           </div>
 
-          <h2 class="section-gap">Settings</h2>
-          <div class="field-row">
-            <label for="c-stop-mode">Mode</label>
-            <select id="c-stop-mode">
-              <option value="128">Nether Bedrock (y=127) - No block needed</option>
-              <option value="256">Overworld Build Limit (y=255) - Pre-placed block</option>
-            </select>
+          <!-- RESTRICTIONS -->
+          <div class="card">
+            <h2>Restrictions</h2>
+            <div class="field-row">
+              <label for="c-max-tnt">Max TNT</label>
+              <input type="number" id="c-max-tnt" value="6688" min="1" step="1" />
+            </div>
+            <div class="field-row">
+              <label for="c-max-ticks">Max Ticks</label>
+              <input type="number" id="c-max-ticks" value="500" min="1" step="1" />
+            </div>
+            <div class="field-row">
+              <label for="c-max-dist">Max Distance</label>
+              <input type="number" id="c-max-dist" value="50" min="0.1" step="1" />
+            </div>
+            <div class="field-row" style="display:none;">
+              <label for="c-stop-mode">Mode</label>
+              <select id="c-stop-mode">
+                <option value="128" selected>Nether Bedrock (y=127)</option>
+                <option value="256">Overworld Build Limit (y=255)</option>
+              </select>
+            </div>
+            <div class="field-row" style="display:none;">
+              <label for="c-max-results">Max Results</label>
+              <input type="number" id="c-max-results" value="50" min="1" max="200" step="1" />
+            </div>
           </div>
 
-          <div class="field-row">
-            <label for="c-max-tnt">Max TNT (-1 for unlimited)</label>
-            <input type="number" id="c-max-tnt" value="-1" min="1" step="1" />
+          <!-- DESTINATION -->
+          <div class="card card-dest">
+            <h2>Destination</h2>
+            <div class="field-row">
+              <label for="c-dest-x">X</label>
+              <input type="number" id="c-dest-x" placeholder="required" step="1" />
+            </div>
+            <div class="field-row">
+              <label for="c-dest-z">Z</label>
+              <input type="number" id="c-dest-z" placeholder="required" step="1" />
+            </div>
+            <div class="calc-btn-wrap">
+              <button class="btn-primary btn-calc-blue" id="btn-calculate">Calculate</button>
+            </div>
+            <div id="calc-status" class="status-msg"></div>
           </div>
-          <div class="field-row">
-            <label for="c-max-ticks">Max Ticks</label>
-            <input type="number" id="c-max-ticks" value="500" min="1" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="c-max-dist">Max Error (blocks)</label>
-            <input type="number" id="c-max-dist" value="20.0" min="0.01" step="0.1" />
-          </div>
-          <div class="field-row">
-            <label for="c-max-results">Max Results</label>
-            <input type="number" id="c-max-results" value="20" min="1" max="200" step="1" />
-          </div>
-
-          <button class="btn-primary" id="btn-calculate">Calculate</button>
-          <div id="calc-status" class="status-msg"></div>
         </div>
 
-        <div class="card">
+        <!-- RESULTS TABLE -->
+        <div class="card results-card" id="results-card">
           <h2>Results</h2>
           <div id="results-placeholder" class="empty-state">
             <p>Enter coordinates and click Calculate.</p>
           </div>
-          <div id="results-wrap" style="display:none">
+          <div id="results-wrap" style="display:none;">
             <div class="results-meta" id="results-meta"></div>
             <div class="table-scroll">
-              <table class="data-table" id="results-table">
+              <table class="data-table">
                 <thead>
                   <tr>
+                    <th>Distance</th>
+                    <th>Position</th>
                     <th>Ticks</th>
                     <th>Early</th>
                     <th>Late</th>
-                    <th>Upaccel</th>
-                    <th>Total</th>
-                    <th>Error</th>
-                    <th>LR</th>
+                    <th>Total TNT</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -106,142 +119,114 @@
           </div>
         </div>
 
-      </div>
-
-      <div class="card detail-card" id="detail-card" style="display:none">
-        <h2>Selected Result Details</h2>
-        <div class="detail-grid" id="detail-grid"></div>
-        <div class="btn-group">
-          <button class="btn-secondary" id="btn-send-to-encode">Send to Encoding</button>
-          <button class="btn-secondary" id="btn-send-to-sim">Send to Simulator</button>
+        <!-- SELECTED RESULT DETAIL CARD -->
+        <div class="card detail-card" id="detail-card" style="display:none;">
+          <div class="detail-header">
+            <h2>Selected Solution Details</h2>
+            <div class="detail-actions">
+              <button class="btn-secondary" id="btn-send-to-sim">Simulate Trajectory</button>
+              <button class="btn-secondary" id="btn-send-to-encode">View TNT Encoding</button>
+            </div>
+          </div>
+          <div class="detail-grid" id="detail-grid"></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- TAB 2: SIMULATE -->
-    <section class="tab-panel" id="tab-sim">
-      <div class="two-col">
-        <div class="card">
-          <h2>Pearl State</h2>
-          <div class="field-row">
-            <label for="s-pos-x">Start X</label>
-            <input type="number" id="s-pos-x" value="0" step="any" />
+      <!-- TAB 2: PEARL SIMULATE -->
+      <section class="tab-panel" id="tab-sim">
+        <div class="two-col">
+          <div class="card">
+            <h2>Simulation Inputs</h2>
+            <div class="field-row">
+              <label for="s-pos-x">Start X</label>
+              <input type="number" id="s-pos-x" value="-118.49" step="any" />
+            </div>
+            <div class="field-row">
+              <label for="s-pos-y">Start Y</label>
+              <input type="number" id="s-pos-y" value="173.875" step="any" />
+            </div>
+            <div class="field-row">
+              <label for="s-pos-z">Start Z</label>
+              <input type="number" id="s-pos-z" value="40.51" step="any" />
+            </div>
+            <div class="field-row">
+              <label for="s-vel-x">Vel X</label>
+              <input type="number" id="s-vel-x" value="0" step="any" />
+            </div>
+            <div class="field-row">
+              <label for="s-vel-y">Vel Y</label>
+              <input type="number" id="s-vel-y" value="2.5" step="any" />
+            </div>
+            <div class="field-row">
+              <label for="s-vel-z">Vel Z</label>
+              <input type="number" id="s-vel-z" value="8.0" step="any" />
+            </div>
+            <div class="field-row">
+              <label for="s-stop-y">Stop Height Y</label>
+              <input type="number" id="s-stop-y" value="128" step="1" />
+            </div>
+            <div class="field-row">
+              <label for="s-max-ticks">Max Ticks</label>
+              <input type="number" id="s-max-ticks" value="300" min="1" max="5000" step="1" />
+            </div>
+            <button class="btn-primary" id="btn-simulate">Run Simulation</button>
           </div>
-          <div class="field-row">
-            <label for="s-pos-y">Start Y</label>
-            <input type="number" id="s-pos-y" value="173.875" step="any" />
-          </div>
-          <div class="field-row">
-            <label for="s-pos-z">Start Z</label>
-            <input type="number" id="s-pos-z" value="0" step="any" />
-          </div>
-          <div class="field-row">
-            <label for="s-vel-x">Vel X</label>
-            <input type="number" id="s-vel-x" value="0" step="any" />
-          </div>
-          <div class="field-row">
-            <label for="s-vel-y">Vel Y</label>
-            <input type="number" id="s-vel-y" value="2.5" step="any" />
-          </div>
-          <div class="field-row">
-            <label for="s-vel-z">Vel Z</label>
-            <input type="number" id="s-vel-z" value="8.0" step="any" />
-          </div>
-          <div class="field-row">
-            <label for="s-stop-y">Stop Height Y</label>
-            <input type="number" id="s-stop-y" value="128" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="s-max-ticks">Max Ticks</label>
-            <input type="number" id="s-max-ticks" value="300" min="1" max="5000" step="1" />
-          </div>
-          <button class="btn-primary" id="btn-simulate">Run Simulation</button>
-        </div>
 
-        <div class="card">
-          <h2>Trajectory Plot</h2>
-          <div id="sim-empty" class="empty-state">
-            <p>Run a simulation to plot trajectory.</p>
-          </div>
-          <div id="sim-result-area" style="display:none">
-            <div class="sim-stats" id="sim-stats"></div>
-            <div class="canvas-wrap">
-              <canvas id="sim-canvas" width="460" height="260"></canvas>
+          <div class="card">
+            <h2>Trajectory Plot</h2>
+            <div id="sim-empty" class="empty-state">
+              <p>Run a simulation to plot trajectory.</p>
+            </div>
+            <div id="sim-result-area" style="display:none">
+              <div class="sim-stats" id="sim-stats"></div>
+              <div class="canvas-wrap">
+                <canvas id="sim-canvas" width="460" height="260"></canvas>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="card" id="sim-data-card" style="display:none">
-        <h2>Tick Data</h2>
-        <div class="table-scroll sim-table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr><th>Tick</th><th>X</th><th>Y</th><th>Z</th><th>vX</th><th>vY</th><th>vZ</th><th>Dist</th></tr>
-            </thead>
-            <tbody id="sim-tbody"></tbody>
-          </table>
+        <div class="card" id="sim-data-card" style="display:none">
+          <h2>Tick Data</h2>
+          <div class="table-scroll sim-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Tick</th><th>X</th><th>Y</th><th>Z</th><th>vX</th><th>vY</th><th>vZ</th><th>Dist</th></tr>
+              </thead>
+              <tbody id="sim-tbody"></tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- TAB 3: ENCODING -->
-    <section class="tab-panel" id="tab-enc">
-      <div class="two-col">
-        <div class="card">
-          <h2>Manual Input</h2>
-          <div class="field-row">
-            <label for="e-early">Early TNT</label>
-            <input type="number" id="e-early" value="100" min="0" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="e-late">Late TNT</label>
-            <input type="number" id="e-late" value="50" min="0" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="e-upaccel">Upaccel TNT</label>
-            <input type="number" id="e-upaccel" value="3" min="0" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="e-direction">Direction (0-7)</label>
-            <input type="number" id="e-direction" value="0" min="0" max="7" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="e-angle">Angle (0-3)</label>
-            <input type="number" id="e-angle" value="0" min="0" max="3" step="1" />
-          </div>
-          <div class="field-row">
-            <label for="e-longrange">Long Range</label>
-            <select id="e-longrange">
-              <option value="0">No</option>
-              <option value="1">Yes</option>
-            </select>
-          </div>
-          <button class="btn-primary" id="btn-encode">Calculate Encoding</button>
-        </div>
-
-        <div class="card">
-          <h2>Wool Block Output</h2>
+      <!-- TAB 3: TNT ENCODING (NO MANUAL INPUT) -->
+      <section class="tab-panel" id="tab-enc">
+        <div class="card full-width">
+          <h2>Wool Block Encoding Output</h2>
           <div id="enc-empty" class="empty-state">
-            <p>Generate encoding to see wool counts.</p>
+            <p>Select a solution in the "Calculate TNT" tab to view its TNT wool block encoding.</p>
           </div>
           <div id="enc-output" style="display:none">
             <div class="enc-wool-grid" id="enc-grid"></div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- TAB 4: HELP -->
-    <section class="tab-panel" id="tab-help">
-      <div class="card help-card">
-        <h2>About 836 FTL v2</h2>
-        <p>This calculator computes TNT counts for the 836 FTL v2 pearl cannon, including Nether ceiling travel (stop at Y=127 bedrock).</p>
-      </div>
-    </section>
+      <!-- TAB 4: INFO -->
+      <section class="tab-panel" id="tab-help">
+        <div class="card help-card">
+          <h2>About 836 FTL v2 Calculator</h2>
+          <p>Calculates exact TNT requirements and wool block encodings for the 836 FTL v2 Nether Ender Pearl Cannon.</p>
+          <ul>
+            <li><strong>Full size:</strong> Max TNT = 6688 (3344 per basket arm)</li>
+            <li><strong>Half size:</strong> Max TNT = 3344 (1672 per basket arm)</li>
+            <li><strong>1/4 size:</strong> Max TNT = 1672 (836 per basket arm)</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+  </div>
 
-  </main>
-
-  <script src="app.js" type="module"></script>
+  <script src="app.js"></script>
 </body>
 </html>

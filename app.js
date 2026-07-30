@@ -1,7 +1,6 @@
 /**
  * 836 FTL v2 — Nether Pearl Calculator
- * Pure JavaScript physics engine. Faithfully reimplements Python/Rust versions.
- * Ultra-optimized vector math engine for instant long-distance solving up to 632,000 blocks.
+ * Pure JavaScript physics engine matching original Python/Rust versions.
  */
 
 const F32 = Math.fround;
@@ -18,6 +17,12 @@ const PEARL_Y_MOTION = F32(-0.0784000015258789);
 
 const NUM_OF_ANGLES = 4;
 const MAX_UPACCEL_TNT = 40;
+
+const SIZE_CAPS = {
+  full: { maxTnt: 6688, maxPerSide: 3344 },
+  half: { maxTnt: 3344, maxPerSide: 1672 },
+  quarter: { maxTnt: 1672, maxPerSide: 836 },
+};
 
 class Vec3 {
   constructor(x, y, z) {
@@ -159,9 +164,12 @@ function simulatePearl(pos, motion, stopHeight, maxTicks = 500) {
   return snapshots;
 }
 
-function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 20.0, maxResults = 50 }) {
+function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 50, maxResults = 50 }) {
   const pearlX = Math.floor(originX) + 0.51;
   const pearlZ = Math.floor(originZ) + 0.51;
+
+  const caps = SIZE_CAPS[cannonSize] || SIZE_CAPS.full;
+  const maxPerSide = caps.maxPerSide;
 
   const distVec = new Vec3(destX - pearlX, 0, destZ - pearlZ);
   const dirResult = calculateDirection(distVec);
@@ -181,7 +189,6 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
     tickMap.get(t.tick).push(t);
   }
 
-  // Pre-calculate determinant
   const det = earlyVec.x * lateVec.z - earlyVec.z * lateVec.x;
   if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
 
@@ -201,23 +208,21 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
     const lateBase  = Math.round(lateExact);
 
     for (const cfg of configs) {
-      // Search window +-30 around base
       for (let a = -30; a <= 30; a++) {
         for (let b = -30; b <= 30; b++) {
           const earlyTnt = earlyBase + a;
           const lateTnt  = lateBase  + b;
 
           if (earlyTnt < 0 || lateTnt < 0) continue;
+          if (maxTnt > 0 && maxPerSide > 0 && (earlyTnt > maxPerSide || lateTnt > maxPerSide)) continue;
 
           const totalTnt = earlyTnt + lateTnt + cfg.upaccelTnt;
           if (maxTnt > 0 && totalTnt > maxTnt) continue;
 
-          // Fast linear distance check before expensive simulation
+          // Fast linear distance pre-check
           const estX = pearlX + (earlyVec.x * earlyTnt + lateVec.x * lateTnt) * divider;
           const estZ = pearlZ + (earlyVec.z * earlyTnt + lateVec.z * lateTnt) * divider;
           const estErr = Math.sqrt((estX - destX)**2 + (estZ - destZ)**2);
-
-          // Allow margin for vertical curvature
           if (estErr > maxDistance + 10.0) continue;
 
           const sim = buildSimulation({ pearlX, pearlZ, earlyTnt, lateTnt, earlyVec, lateVec, upaccelTnt: cfg.upaccelTnt, longRange: cfg.longRange, tick, stopHeight });
@@ -230,8 +235,11 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
 
           if (error > maxDistance) continue;
 
+          const distanceVal = Math.sqrt((destX - originX)**2 + (destZ - originZ)**2);
+
           results.push({
             tick, earlyTnt, lateTnt, upaccelTnt: cfg.upaccelTnt, totalTnt, error,
+            distance: distanceVal,
             longRange: cfg.longRange, direction: dirResult.direction, angle: dirResult.angle,
             landing: landing.pos, sim,
           });
@@ -242,7 +250,6 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
 
   results.sort((a, b) => a.totalTnt - b.totalTnt || a.error - b.error);
 
-  // Filter duplicates
   const unique = [];
   const seen = new Set();
   for (const r of results) {
@@ -313,6 +320,7 @@ let savedResults = [];
 let selectedResult = null;
 
 if (typeof document !== 'undefined') {
+  // Tab switching
   for (const btn of document.querySelectorAll('.tab-btn')) {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => {
@@ -324,6 +332,16 @@ if (typeof document !== 'undefined') {
       btn.setAttribute('aria-selected', 'true');
       const p = document.getElementById('tab-' + btn.dataset.tab);
       if (p) p.classList.add('active');
+    });
+  }
+
+  // Cannon size select event -> update max TNT input
+  const sizeSelect = document.getElementById('c-cannon-size');
+  const maxTntInput = document.getElementById('c-max-tnt');
+  if (sizeSelect && maxTntInput) {
+    sizeSelect.addEventListener('change', () => {
+      const caps = SIZE_CAPS[sizeSelect.value] || SIZE_CAPS.full;
+      maxTntInput.value = caps.maxTnt;
     });
   }
 
@@ -340,18 +358,19 @@ if (typeof document !== 'undefined') {
       statusEl.textContent = '';
       statusEl.className = 'status-msg';
 
-      const originX  = parseFloat(document.getElementById('c-origin-x').value);
-      const originZ  = parseFloat(document.getElementById('c-origin-z').value);
-      const destX    = parseFloat(document.getElementById('c-dest-x').value);
-      const destZ    = parseFloat(document.getElementById('c-dest-z').value);
-      const maxTnt   = parseInt(document.getElementById('c-max-tnt').value, 10);
-      const maxTicks = parseInt(document.getElementById('c-max-ticks').value, 10);
-      const maxDist  = parseFloat(document.getElementById('c-max-dist').value);
-      const maxRes   = parseInt(document.getElementById('c-max-results').value, 10);
+      const originX    = parseFloat(document.getElementById('c-origin-x').value);
+      const originZ    = parseFloat(document.getElementById('c-origin-z').value);
+      const destX      = parseFloat(document.getElementById('c-dest-x').value);
+      const destZ      = parseFloat(document.getElementById('c-dest-z').value);
+      const cannonSize = document.getElementById('c-cannon-size').value;
+      const maxTnt     = parseInt(document.getElementById('c-max-tnt').value, 10);
+      const maxTicks   = parseInt(document.getElementById('c-max-ticks').value, 10);
+      const maxDist    = parseFloat(document.getElementById('c-max-dist').value);
+      const maxRes     = parseInt(document.getElementById('c-max-results').value, 10);
       const stopHeight = parseFloat(document.getElementById('c-stop-mode').value);
 
       if ([originX, originZ, destX, destZ, maxTnt, maxTicks, maxDist, stopHeight].some(isNaN)) {
-        statusEl.textContent = 'Please fill in all fields with valid numbers.';
+        statusEl.textContent = 'Please fill in required destination X and Z coordinates.';
         statusEl.className = 'status-msg error';
         return;
       }
@@ -369,7 +388,7 @@ if (typeof document !== 'undefined') {
       setTimeout(() => {
         try {
           const t0 = performance.now();
-          const out = calculate({ originX, originZ, destX, destZ, stopHeight, maxTnt, maxTicks, maxDistance: maxDist, maxResults: maxRes });
+          const out = calculate({ originX, originZ, destX, destZ, cannonSize, stopHeight, maxTnt, maxTicks, maxDistance: maxDist, maxResults: maxRes });
           const elapsed = (performance.now() - t0).toFixed(0);
 
           if (out.error) {
@@ -383,7 +402,7 @@ if (typeof document !== 'undefined') {
           detailCard.style.display = 'none';
 
           if (out.results.length === 0) {
-            statusEl.textContent = 'No results found within Max Error. Try increasing Max Error (e.g. 20.0) or Max TNT.';
+            statusEl.textContent = 'No results found within Max Distance. Try increasing Max Distance or Max TNT.';
             statusEl.className = 'status-msg error';
             phEl.style.display = 'block';
             wrapEl.style.display = 'none';
@@ -395,14 +414,14 @@ if (typeof document !== 'undefined') {
             const r = out.results[i];
             const tr = document.createElement('tr');
             tr.dataset.idx = i;
+            const posStr = `${r.landing.x.toFixed(1)}, ${r.landing.z.toFixed(1)}`;
             tr.innerHTML = `
+              <td>${r.distance.toFixed(1)} blks</td>
+              <td>${posStr}</td>
               <td>${r.tick}</td>
               <td>${r.earlyTnt}</td>
               <td>${r.lateTnt}</td>
-              <td>${r.upaccelTnt}</td>
               <td><strong>${r.totalTnt}</strong></td>
-              <td>${r.error.toFixed(4)}</td>
-              <td>${r.longRange ? 'LR' : '-'}</td>
               <td><button class="select-btn" data-idx="${i}">Select</button></td>
             `;
             tbodyEl.appendChild(tr);
@@ -421,7 +440,7 @@ if (typeof document !== 'undefined') {
           statusEl.textContent = `${out.results.length} results found.`;
           statusEl.className = 'status-msg ok';
 
-          // Automatically select first result!
+          // Select first result automatically
           selectResult(0);
         } catch (err) {
           statusEl.textContent = 'Error: ' + err.message;
@@ -452,7 +471,7 @@ function selectResult(idx) {
     { label: 'Late TNT',      value: r.lateTnt,                      cls: '' },
     { label: 'Upaccel TNT',   value: r.upaccelTnt,                   cls: '' },
     { label: 'Ticks in Air',  value: r.tick,                         cls: '' },
-    { label: 'Landing Error', value: r.error.toFixed(5) + ' blks',   cls: r.error > 5.0 ? 'warn' : '' },
+    { label: 'Landing Error', value: r.error.toFixed(4) + ' blks',   cls: r.error > 10.0 ? 'warn' : '' },
     { label: 'Long Range',    value: r.longRange ? 'Yes' : 'No',     cls: r.longRange ? 'warn' : '' },
     { label: 'Direction',     value: `${DIR_NAMES[r.direction]} (${r.direction})`, cls: '' },
     { label: 'Angle Index',   value: r.angle,                        cls: '' },
@@ -468,7 +487,7 @@ function selectResult(idx) {
     detailGrid.appendChild(div);
   }
 
-  // Also auto-render Wool Encoding right inside selected result and update Encoding Tab!
+  // Render Wool Encoding
   const encoding = buildEncoding({
     earlyTnt: r.earlyTnt,
     lateTnt: r.lateTnt,
@@ -483,7 +502,6 @@ function selectResult(idx) {
 }
 
 function renderWoolEncoding(encoding) {
-  // Render in Encoding tab
   const grid = document.getElementById('enc-grid');
   if (grid) {
     grid.innerHTML = '';
@@ -569,20 +587,6 @@ if (typeof document !== 'undefined') {
     document.getElementById('sim-empty').style.display = 'none';
     document.getElementById('sim-result-area').style.display = 'block';
     document.getElementById('sim-data-card').style.display = 'block';
-  });
-
-  document.getElementById('btn-encode')?.addEventListener('click', () => {
-    const earlyTnt   = parseInt(document.getElementById('e-early').value, 10);
-    const lateTnt    = parseInt(document.getElementById('e-late').value, 10);
-    const upaccelTnt = parseInt(document.getElementById('e-upaccel').value, 10);
-    const direction  = parseInt(document.getElementById('e-direction').value, 10);
-    const angle      = parseInt(document.getElementById('e-angle').value, 10);
-    const longRange  = document.getElementById('e-longrange').value === '1';
-
-    if ([earlyTnt, lateTnt, upaccelTnt, direction, angle].some(isNaN)) return;
-
-    const encoding = buildEncoding({ earlyTnt, lateTnt, upaccelTnt, direction, angle, longRange });
-    renderWoolEncoding(encoding);
   });
 }
 
