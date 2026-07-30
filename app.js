@@ -1,19 +1,25 @@
-// 836 FTL v2 Nether Ender Pearl Cannon Calculator
-// Based on exact garlic-bred 836 FTL v2 physical trajectory math
+// 836 FTL v2 Ender Pearl Cannon Calculator
+// Exact 1-to-1 canonical 8-arm implementation from garlic-bred's Calculator.py
 
 const PEARL_HORIZONTAL_OFFSET = 0.51;
-const PEARL_Y = 173.875;
+const PEARL_Y = 256.22375;
 const PEARL_EYE_HEIGHT = 0.25 * Math.fround(0.85);
 const PEARL_Y_MOTION = -0.0784;
 
 const EXPLOSION_HEIGHT = Math.fround(0.98) * Math.fround(0.0625);
-const ALIGNMENT_TNT_Y = 172.79375;
+const ALIGNMENT_TNT_Y = 255.1425;
 const ALIGNMENT_TNT_OFFSET = 1.8125;
-const BASKET_TNT_Y = 173.875 - Math.fround(0.98) - 0.04;
+const BASKET_TNT_Y = 255.20375;
+const BASKET_TNT_Y_MOTION = -0.04 * 0.98;
+
+const BASKET_UPACCEL_TNT_Y = 251.34875;
+const BASKET_UPACCEL_TNT = 0;
 
 const UPACCEL_TNT_Y = 248.53626183321285;
 const UPACCEL_TNT_LONGRANGE_Y = 250.89563683321285;
 const MAX_UPACCEL_TNT = 31;
+const MAX_VARIABLE_TNT = 6666;
+const MAX_TNT = 6688;
 const NUM_OF_ANGLES = 4;
 
 const F32 = Math.fround;
@@ -43,14 +49,45 @@ class Vec3 {
   copy() { return new Vec3(this.x, this.y, this.z); }
 }
 
-function calcExplosionVelocity(tntPos, targetPos, eyeHeight, exposure) {
-  const explosionPos = tntPos.add(new Vec3(0, EXPLOSION_HEIGHT, 0));
-  const tPos = targetPos.add(new Vec3(0, eyeHeight, 0));
-  const direction = tPos.sub(explosionPos);
-  const dist = direction.length();
-  if (dist >= 8.0 || dist === 0) return new Vec3(0,0,0);
-  const push = (1.0 - dist / 8.0) * exposure / dist;
-  return direction.multiply(push);
+class Tnt {
+  constructor(pos, motion) {
+    this.pos = pos;
+    this.motion = motion;
+  }
+  calculateVelocityFromExplosion(entityPos, eyeHeight, exposure, isTnt) {
+    const explosionPos = this.pos.add(new Vec3(0, EXPLOSION_HEIGHT, 0));
+    const distNorm = explosionPos.sub(entityPos).length() / F32(8.0);
+    if (distNorm > 1.0) return new Vec3(0, 0, 0);
+
+    const targetY = isTnt ? entityPos.y : entityPos.y + Number(eyeHeight);
+    const dir = new Vec3(entityPos.x - explosionPos.x, targetY - explosionPos.y, entityPos.z - explosionPos.z);
+    const len = dir.length();
+    if (len === 0.0) return new Vec3(0, 0, 0);
+
+    const normDir = dir.multiply(1.0 / len);
+    return normDir.multiply((1.0 - distNorm) * Number(exposure));
+  }
+  tick() {
+    this.motion = this.motion.add(new Vec3(0, -0.04, 0));
+    this.pos = this.pos.add(this.motion);
+    this.motion = this.motion.multiply(0.98);
+  }
+}
+
+class Pearl {
+  constructor(pos, motion) {
+    this.pos = pos;
+    this.motion = motion;
+  }
+  tick() {
+    this.motion = this.motion.add(new Vec3(0, -0.03, 0));
+    this.motion = new Vec3(
+      F32(this.motion.x * F32(0.99)),
+      F32(this.motion.y * F32(0.99)),
+      F32(this.motion.z * F32(0.99))
+    );
+    this.pos = this.pos.add(this.motion);
+  }
 }
 
 function calculateDirection(vec) {
@@ -77,11 +114,18 @@ function calculateDirection(vec) {
   return { direction, angle };
 }
 
-function calculateTntVectors(vec, direction) {
-  const pearlX = 0.51;
-  const pearlZ = 0.51;
-  const pearlPos = new Vec3(pearlX, PEARL_Y, pearlZ);
+const ARM_OFFSETS = [
+  new Vec3( 0.5, BASKET_TNT_Y,  0.5),
+  new Vec3(-0.5, BASKET_TNT_Y,  0.5),
+  new Vec3(-0.5, BASKET_TNT_Y, -0.5),
+  new Vec3( 0.5, BASKET_TNT_Y, -0.5),
+  new Vec3( 0.5, BASKET_TNT_Y,  0.5),
+  new Vec3(-0.5, BASKET_TNT_Y,  0.5),
+  new Vec3(-0.5, BASKET_TNT_Y, -0.5),
+  new Vec3( 0.5, BASKET_TNT_Y, -0.5)
+];
 
+function calculateTntVectors(vec, direction) {
   const firstAlignmentTntPos = new Vec3(1, 0, 1);
   if (vec.x < 0) firstAlignmentTntPos.x = -1;
   if (vec.z < 0) firstAlignmentTntPos.z = -1;
@@ -93,47 +137,80 @@ function calculateTntVectors(vec, direction) {
     secondAlignmentTntPos.x *= -1;
   }
 
-  const firstPos  = firstAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(pearlX, ALIGNMENT_TNT_Y, pearlZ));
-  const secondPos = secondAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(pearlX, ALIGNMENT_TNT_Y, pearlZ));
+  const p1 = firstAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(0, ALIGNMENT_TNT_Y, 0));
+  const p2 = secondAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(0, ALIGNMENT_TNT_Y, 0));
 
-  const earlyPos = new Vec3(pearlX, BASKET_TNT_Y, pearlZ);
-  const latePos  = new Vec3(pearlX, BASKET_TNT_Y, pearlZ);
+  const firstAlignmentTnt  = new Tnt(p1, new Vec3(0, 0, 0));
+  const secondAlignmentTnt = new Tnt(p2, new Vec3(0, 0, 0));
+  const basketUpaccelTnt   = new Tnt(new Vec3(0, BASKET_UPACCEL_TNT_Y, 0), new Vec3(0, 0, 0));
+
+  const dirIdx = direction ? direction.direction : 0;
+  const earlyPos = ARM_OFFSETS[(dirIdx + 2) % 8].copy();
+  const latePos  = ARM_OFFSETS[dirIdx % 8].copy();
+
+  const earlyTnt = new Tnt(earlyPos, new Vec3(0, BASKET_TNT_Y_MOTION, 0));
+  const lateTnt  = new Tnt(latePos,  new Vec3(0, BASKET_TNT_Y_MOTION, 0));
 
   const angle = direction ? direction.angle : 0;
 
-  const ev1 = calcExplosionVelocity(firstPos, earlyPos, 0, F32(1.0 / 27.0)).multiply(NUM_OF_ANGLES);
-  const ev2 = calcExplosionVelocity(secondPos, earlyPos, 0, F32(1.0 / 27.0)).multiply(angle);
+  const ev1 = firstAlignmentTnt.calculateVelocityFromExplosion(earlyTnt.pos, 0, F32(1.0/27.0), true).multiply(NUM_OF_ANGLES);
+  const ev2 = secondAlignmentTnt.calculateVelocityFromExplosion(earlyTnt.pos, 0, F32(1.0/27.0), true).multiply(angle);
+  const ev3 = basketUpaccelTnt.calculateVelocityFromExplosion(earlyTnt.pos, 0, F32(1.0), true).multiply(BASKET_UPACCEL_TNT);
+  earlyTnt.motion = earlyTnt.motion.add(ev1).add(ev2).add(ev3);
 
-  let earlyMotion = new Vec3(0, -0.04 * 0.98, 0).add(ev1).add(ev2);
-  earlyMotion = new Vec3(earlyMotion.x, earlyMotion.y - 0.04, earlyMotion.z).multiply(F32(0.98));
-  const shiftedEarlyPos = earlyPos.add(earlyMotion);
+  const lv1 = firstAlignmentTnt.calculateVelocityFromExplosion(lateTnt.pos, 0, F32(1.0/27.0), true).multiply(NUM_OF_ANGLES);
+  const lv2 = secondAlignmentTnt.calculateVelocityFromExplosion(lateTnt.pos, 0, F32(1.0/27.0), true).multiply(angle + 1);
+  const lv3 = basketUpaccelTnt.calculateVelocityFromExplosion(lateTnt.pos, 0, F32(1.0), true).multiply(BASKET_UPACCEL_TNT);
+  lateTnt.motion = lateTnt.motion.add(lv1).add(lv2).add(lv3);
 
-  const lv1 = calcExplosionVelocity(firstPos, latePos, 0, F32(1.0 / 27.0)).multiply(NUM_OF_ANGLES);
-  const lv2 = calcExplosionVelocity(secondPos, latePos, 0, F32(1.0 / 27.0)).multiply(angle + 1);
+  earlyTnt.tick();
+  lateTnt.tick();
 
-  let lateMotion = new Vec3(0, -0.04 * 0.98, 0).add(lv1).add(lv2);
-  lateMotion = new Vec3(lateMotion.x, lateMotion.y - 0.04, lateMotion.z).multiply(F32(0.98));
-  const shiftedLatePos = latePos.add(lateMotion);
+  const pearlPos = new Vec3(PEARL_HORIZONTAL_OFFSET, PEARL_Y, PEARL_HORIZONTAL_OFFSET);
+  const earlyTntVector = earlyTnt.calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false);
+  const lateTntVector  = lateTnt.calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false);
 
-  const earlyVec = calcExplosionVelocity(shiftedEarlyPos, pearlPos, PEARL_EYE_HEIGHT, F32(1.0));
-  const lateVec  = calcExplosionVelocity(shiftedLatePos,  pearlPos, PEARL_EYE_HEIGHT, F32(1.0));
-
-  return { earlyVec, lateVec };
+  return [ earlyTntVector, lateTntVector ];
 }
 
-class Pearl {
-  constructor(pos, motion) {
-    this.pos = pos;
-    this.motion = motion;
+function calculatePossibleTicks(upaccelTntY) {
+  const possibleTicks = [];
+  const pearlPos = new Vec3(PEARL_HORIZONTAL_OFFSET, PEARL_Y, PEARL_HORIZONTAL_OFFSET);
+  for (let upaccelTnt = 0; upaccelTnt <= MAX_UPACCEL_TNT; upaccelTnt++) {
+    const tntPos = new Vec3(0, upaccelTntY, 0);
+    const tnt = new Tnt(tntPos, new Vec3(0, 0, 0));
+    const upaccelVel = tnt.calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false).multiply(upaccelTnt);
+    const pearl = new Pearl(pearlPos.copy(), new Vec3(0, PEARL_Y_MOTION, 0).add(upaccelVel));
+
+    let ticks = 0;
+    while (pearl.pos.y >= 256.0) {
+      pearl.tick();
+      ticks++;
+    }
+    possibleTicks.push(ticks);
   }
-  tick() {
-    this.motion = this.motion.add(new Vec3(0, -0.03, 0));
-    this.motion = new Vec3(
-      F32(this.motion.x * F32(0.99)),
-      F32(this.motion.y * F32(0.99)),
-      F32(this.motion.z * F32(0.99))
-    );
-    this.pos = this.pos.add(this.motion);
+  return possibleTicks;
+}
+
+class PearlSimulation {
+  constructor(pearlPos, initMotion, ticks, upaccelTnt, longRange, direction) {
+    this.pearlPos = pearlPos;
+    this.initMotion = initMotion;
+    this.ticks = ticks;
+    this.upaccelTnt = upaccelTnt;
+    this.longRange = longRange;
+    this.direction = direction;
+
+    const tntY = longRange ? UPACCEL_TNT_LONGRANGE_Y : UPACCEL_TNT_Y;
+    const upaccelVel = new Tnt(new Vec3(0, tntY, 0), new Vec3(0,0,0)).calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false).multiply(upaccelTnt);
+
+    this.pearl = new Pearl(pearlPos.copy(), initMotion.add(upaccelVel));
+  }
+  getEnd() {
+    for (let t = 0; t < this.ticks; t++) {
+      this.pearl.tick();
+    }
+    return this.pearl;
   }
 }
 
@@ -144,24 +221,40 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
   const pearlPos = new Vec3(pearlX, PEARL_Y, pearlZ);
   const destPos  = new Vec3(destX, 0, destZ);
 
-  const distVec = destPos.sub(pearlPos);
-  const dirResult = calculateDirection(distVec);
-  let { earlyVec, lateVec } = calculateTntVectors(distVec, dirResult);
+  const distanceExact = destPos.sub(pearlPos);
+  const dirResult = calculateDirection(distanceExact);
+  const [ earlyTntVector, lateTntVector ] = calculateTntVectors(distanceExact, dirResult);
 
-  let det = earlyVec.z * lateVec.x - lateVec.z * earlyVec.x;
+  const det = earlyTntVector.x * lateTntVector.z - earlyTntVector.z * lateTntVector.x;
   if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
 
-  let earlyTntExact = Math.abs((distVec.z * lateVec.x - distVec.x * lateVec.z) / det);
-  let lateTntExact  = Math.abs((distVec.x - earlyTntExact * earlyVec.x) / lateVec.x);
+  let earlyTntExact = Math.abs((distanceExact.x * lateTntVector.z - distanceExact.z * lateTntVector.x) / det);
+  let lateTntExact  = Math.abs((earlyTntVector.x * distanceExact.z - earlyTntVector.z * distanceExact.x) / det);
+
+  const possibleTicks = calculatePossibleTicks(UPACCEL_TNT_LONGRANGE_Y).concat(calculatePossibleTicks(UPACCEL_TNT_Y));
 
   const results = [];
   let divider = 0;
 
+  let upaccelTnt = 0;
+  let longRange = false;
+  let tryAgain = false;
+
   const caps = SIZE_CAPS[cannonSize] || SIZE_CAPS.full;
   const effectiveMaxTnt = maxTnt > 0 ? Math.min(maxTnt, caps.maxTnt) : 999999;
+  const effectiveMaxDist = maxDistance > 0 ? maxDistance : 99999999.0;
 
   for (let tick = 1; tick <= maxTicks; tick++) {
     divider += Math.pow(F32(0.99), tick);
+
+    const idx = possibleTicks.indexOf(tick);
+    if (idx !== -1) {
+      upaccelTnt = idx % (MAX_UPACCEL_TNT + 1);
+      longRange = idx <= (MAX_UPACCEL_TNT + 1);
+    } else {
+      if (!tryAgain) continue;
+    }
+    tryAgain = false;
 
     const earlyBase = Math.round(earlyTntExact / divider);
     const lateBase  = Math.round(lateTntExact / divider);
@@ -173,30 +266,43 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
 
         if (earlyTnt < 0 || lateTnt < 0) continue;
 
-        const totalTnt = earlyTnt + lateTnt;
-        if (effectiveMaxTnt > 0 && totalTnt > effectiveMaxTnt) continue;
+        const totalTnt = earlyTnt + lateTnt + upaccelTnt;
+
+        if (maxTnt > 0 && totalTnt > effectiveMaxTnt) continue;
+        if (maxTnt > 0 && Math.floor(earlyTnt / 11) + Math.floor(lateTnt / 11) > Math.floor(MAX_VARIABLE_TNT / 11)) continue;
 
         const initMotion = new Vec3(
-          earlyVec.x * earlyTnt + lateVec.x * lateTnt,
+          earlyTntVector.x * earlyTnt + lateTntVector.x * lateTnt,
           PEARL_Y_MOTION,
-          earlyVec.z * earlyTnt + lateVec.z * lateTnt,
+          earlyTntVector.z * earlyTnt + lateTntVector.z * lateTnt
         );
 
-        const pearl = new Pearl(new Vec3(pearlPos.x, pearlPos.y, pearlPos.z), initMotion);
-        for (let t = 0; t < tick; t++) pearl.tick();
+        const sim = new PearlSimulation(pearlPos, initMotion, tick, upaccelTnt, longRange, dirResult.direction);
+        const endPearl = sim.getEnd();
 
-        const distance = pearl.pos.sub(destPos).lengthHorizontal();
-        if (maxDistance > 0 && distance > maxDistance) continue;
+        const distance = endPearl.pos.sub(destPos).lengthHorizontal();
+        if (distance > effectiveMaxDist) continue;
 
-        const landingPos = pearl.pos;
+        if (endPearl.pos.y < stopHeight) {
+          tryAgain = true;
+          continue;
+        }
+
+        endPearl.tick();
+        if (endPearl.pos.y >= stopHeight) {
+          tryAgain = true;
+          continue;
+        }
+
+        const landingPos = endPearl.pos;
         const distanceVal = Math.sqrt((destX - originX)**2 + (destZ - originZ)**2);
 
         results.push({
-          tick, earlyTnt, lateTnt, upaccelTnt: 0, totalTnt, error: distance,
-          distance: distanceVal,
-          longRange: false, direction: dirResult.direction, angle: dirResult.angle,
+          earlyTnt, lateTnt, upaccelTnt, totalTnt, error: distance,
+          distance: distanceVal, tick,
+          longRange, direction: dirResult.direction, angle: dirResult.angle,
           landing: landingPos,
-          sim: { initMotion, snapshots: [{ tick, pos: landingPos, motion: pearl.motion }] }
+          sim: { initMotion, snapshots: [{ tick, pos: landingPos, motion: endPearl.motion }] }
         });
       }
     }
