@@ -73,15 +73,18 @@ function calculateTntVectors(distanceVec, dirResult) {
   const eyeY = PEARL_Y + PEARL_EYE_HEIGHT;
   const eyePos = new Vec3(pearlX, eyeY, pearlZ);
 
+  // TNT offset relative to pearl:
+  // Offset -0.5 pushes POSITIVE (+X / +Z)
+  // Offset +0.5 pushes NEGATIVE (-X / -Z)
   const ARM_PAIRS = [
-    [[-0.5, -0.5], [-0.5, +0.5]],
-    [[+0.5, +0.5], [+0.5, -0.5]],
-    [[-0.5, -0.5], [+0.5, -0.5]],
-    [[+0.5, +0.5], [-0.5, +0.5]],
-    [[+0.5, -0.5], [+0.5, +0.5]],
-    [[-0.5, +0.5], [-0.5, -0.5]],
-    [[+0.5, -0.5], [-0.5, -0.5]],
-    [[-0.5, +0.5], [+0.5, +0.5]],
+    [[+0.5, +0.5], [+0.5, -0.5]],  // 0 WNW (-X, -Z and -X, +Z)
+    [[-0.5, +0.5], [-0.5, -0.5]],  // 1 ENE (+X, -Z and +X, +Z)
+    [[+0.5, +0.5], [-0.5, +0.5]],  // 2 NNW (-Z, -X and -Z, +X)
+    [[-0.5, +0.5], [+0.5, +0.5]],  // 3 NNE (-Z, +X and -Z, -X)
+    [[-0.5, -0.5], [+0.5, -0.5]],  // 4 SSE (+Z, +X and +Z, -X)
+    [[+0.5, -0.5], [-0.5, -0.5]],  // 5 SSW (+Z, -X and +Z, +X)
+    [[-0.5, -0.5], [-0.5, +0.5]],  // 6 ESE (+X, +Z and +X, -Z)
+    [[+0.5, -0.5], [+0.5, +0.5]],  // 7 WSW (-X, +Z and -X, -Z)
   ];
 
   const [ea, la] = ARM_PAIRS[dirResult.direction];
@@ -156,7 +159,7 @@ function simulatePearl(pos, motion, stopHeight, maxTicks = 500) {
   return snapshots;
 }
 
-function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 0.5, maxResults = 50 }) {
+function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 5.0, maxResults = 50 }) {
   const pearlX = Math.floor(originX) + 0.51;
   const pearlZ = Math.floor(originZ) + 0.51;
 
@@ -166,7 +169,7 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
   const possibleTicks = calculatePossibleTicks(stopHeight, maxTicks);
 
   if (possibleTicks.length === 0) {
-    return { error: 'No valid upaccel configs found for stop height.' };
+    return { error: `No valid upaccel configs found for stop height y=${stopHeight}.` };
   }
 
   const results = [];
@@ -197,8 +200,8 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
       const earlyBase = Math.round(earlyExact);
       const lateBase  = Math.round(lateExact);
 
-      for (let a = -2; a <= 2; a++) {
-        for (let b = -2; b <= 2; b++) {
+      for (let a = -20; a <= 20; a++) {
+        for (let b = -20; b <= 20; b++) {
           const earlyTnt = earlyBase + a;
           const lateTnt  = lateBase  + b;
 
@@ -224,15 +227,27 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
             landing: landing.pos, sim,
           });
 
-          if (results.length >= maxResults * 5) break;
+          if (results.length >= maxResults * 10) break;
         }
-        if (results.length >= maxResults * 5) break;
+        if (results.length >= maxResults * 10) break;
       }
     }
   }
 
   results.sort((a, b) => a.totalTnt - b.totalTnt || a.error - b.error);
-  return { results: results.slice(0, maxResults), direction: dirResult };
+
+  // Filter out duplicates (same TNT counts & tick)
+  const unique = [];
+  const seen = new Set();
+  for (const r of results) {
+    const key = `${r.earlyTnt}-${r.lateTnt}-${r.upaccelTnt}-${r.tick}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(r);
+    }
+  }
+
+  return { results: unique.slice(0, maxResults), direction: dirResult };
 }
 
 function buildSimulation({ pearlX, pearlZ, earlyTnt, lateTnt, earlyVec, lateVec, upaccelTnt, longRange, tick, stopHeight }) {
@@ -362,7 +377,7 @@ if (typeof document !== 'undefined') {
           detailCard.style.display = 'none';
 
           if (out.results.length === 0) {
-            statusEl.textContent = 'No results found. Try increasing Max TNT, Max Ticks, or Max Error.';
+            statusEl.textContent = 'No results found within Max Error. Try increasing Max Error (e.g. 5.0) or Max TNT.';
             statusEl.className = 'status-msg error';
             phEl.style.display = 'block';
             wrapEl.style.display = 'none';
@@ -399,6 +414,9 @@ if (typeof document !== 'undefined') {
 
           statusEl.textContent = `${out.results.length} results found.`;
           statusEl.className = 'status-msg ok';
+
+          // Automatically select first result!
+          selectResult(0);
         } catch (err) {
           statusEl.textContent = 'Error: ' + err.message;
           statusEl.className = 'status-msg error';
@@ -412,6 +430,7 @@ if (typeof document !== 'undefined') {
 function selectResult(idx) {
   selectedResult = savedResults[idx];
   const r = selectedResult;
+  if (!r) return;
 
   document.querySelectorAll('#results-tbody tr').forEach((tr, i) => {
     tr.classList.toggle('selected-row', i === idx);
@@ -427,7 +446,7 @@ function selectResult(idx) {
     { label: 'Late TNT',      value: r.lateTnt,                      cls: '' },
     { label: 'Upaccel TNT',   value: r.upaccelTnt,                   cls: '' },
     { label: 'Ticks in Air',  value: r.tick,                         cls: '' },
-    { label: 'Landing Error', value: r.error.toFixed(5) + ' blks',   cls: r.error > 0.25 ? 'warn' : '' },
+    { label: 'Landing Error', value: r.error.toFixed(5) + ' blks',   cls: r.error > 1.0 ? 'warn' : '' },
     { label: 'Long Range',    value: r.longRange ? 'Yes' : 'No',     cls: r.longRange ? 'warn' : '' },
     { label: 'Direction',     value: `${DIR_NAMES[r.direction]} (${r.direction})`, cls: '' },
     { label: 'Angle Index',   value: r.angle,                        cls: '' },
@@ -443,21 +462,50 @@ function selectResult(idx) {
     detailGrid.appendChild(div);
   }
 
+  // Also auto-render Wool Encoding right inside selected result and update Encoding Tab!
+  const encoding = buildEncoding({
+    earlyTnt: r.earlyTnt,
+    lateTnt: r.lateTnt,
+    upaccelTnt: r.upaccelTnt,
+    direction: r.direction,
+    angle: r.angle,
+    longRange: r.longRange
+  });
+
+  renderWoolEncoding(encoding);
   document.getElementById('detail-card').style.display = 'block';
+}
+
+function renderWoolEncoding(encoding) {
+  // Render in Encoding tab
+  const grid = document.getElementById('enc-grid');
+  if (grid) {
+    grid.innerHTML = '';
+    for (const e of encoding) {
+      const div = document.createElement('div');
+      div.className = 'wool-block';
+      div.innerHTML = `
+        <div class="wool-swatch-big" style="background:${e.color}"></div>
+        <div class="wool-info">
+          <div class="wool-color-name">${e.name}</div>
+          <div class="wool-count">${e.count}</div>
+          <div class="wool-desc">${e.desc}</div>
+        </div>
+      `;
+      grid.appendChild(div);
+    }
+  }
+
+  const encEmpty = document.getElementById('enc-empty');
+  const encOutput = document.getElementById('enc-output');
+  if (encEmpty) encEmpty.style.display = 'none';
+  if (encOutput) encOutput.style.display = 'block';
 }
 
 if (typeof document !== 'undefined') {
   document.getElementById('btn-send-to-encode')?.addEventListener('click', () => {
     if (!selectedResult) return;
-    const r = selectedResult;
-    document.getElementById('e-early').value     = r.earlyTnt;
-    document.getElementById('e-late').value      = r.lateTnt;
-    document.getElementById('e-upaccel').value   = r.upaccelTnt;
-    document.getElementById('e-direction').value = r.direction;
-    document.getElementById('e-angle').value     = r.angle;
-    document.getElementById('e-longrange').value = r.longRange ? '1' : '0';
     document.querySelector('[data-tab="enc"]').click();
-    document.getElementById('btn-encode').click();
   });
 
   document.getElementById('btn-send-to-sim')?.addEventListener('click', () => {
@@ -528,25 +576,7 @@ if (typeof document !== 'undefined') {
     if ([earlyTnt, lateTnt, upaccelTnt, direction, angle].some(isNaN)) return;
 
     const encoding = buildEncoding({ earlyTnt, lateTnt, upaccelTnt, direction, angle, longRange });
-    const grid = document.getElementById('enc-grid');
-    grid.innerHTML = '';
-
-    for (const e of encoding) {
-      const div = document.createElement('div');
-      div.className = 'wool-block';
-      div.innerHTML = `
-        <div class="wool-swatch-big" style="background:${e.color}"></div>
-        <div class="wool-info">
-          <div class="wool-color-name">${e.name}</div>
-          <div class="wool-count">${e.count}</div>
-          <div class="wool-desc">${e.desc}</div>
-        </div>
-      `;
-      grid.appendChild(div);
-    }
-
-    document.getElementById('enc-empty').style.display = 'none';
-    document.getElementById('enc-output').style.display = 'block';
+    renderWoolEncoding(encoding);
   });
 }
 
