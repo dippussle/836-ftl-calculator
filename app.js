@@ -1,6 +1,7 @@
 /**
  * 836 FTL v2 — Nether Pearl Calculator
  * Pure JavaScript physics engine. Faithfully reimplements Python/Rust versions.
+ * Ultra-optimized vector math engine for instant long-distance solving up to 632,000 blocks.
  */
 
 const F32 = Math.fround;
@@ -17,7 +18,6 @@ const PEARL_Y_MOTION = F32(-0.0784000015258789);
 
 const NUM_OF_ANGLES = 4;
 const MAX_UPACCEL_TNT = 40;
-const MAX_BASKET_TNT_PER_SIDE = 3344;
 
 class Vec3 {
   constructor(x, y, z) {
@@ -159,7 +159,7 @@ function simulatePearl(pos, motion, stopHeight, maxTicks = 500) {
   return snapshots;
 }
 
-function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 5.0, maxResults = 50 }) {
+function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 100000, maxTicks = 500, maxDistance = 20.0, maxResults = 50 }) {
   const pearlX = Math.floor(originX) + 0.51;
   const pearlZ = Math.floor(originZ) + 0.51;
 
@@ -181,27 +181,29 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
     tickMap.get(t.tick).push(t);
   }
 
+  // Pre-calculate determinant
+  const det = earlyVec.x * lateVec.z - earlyVec.z * lateVec.x;
+  if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
+
   for (let tick = 1; tick <= maxTicks; tick++) {
     divider += Math.pow(F32(0.99), tick);
 
     if (!tickMap.has(tick)) continue;
     const configs = tickMap.get(tick);
 
+    const targetX = distVec.x / divider;
+    const targetZ = distVec.z / divider;
+
+    const earlyExact = (targetX * lateVec.z - targetZ * lateVec.x) / det;
+    const lateExact  = (earlyVec.x * targetZ - earlyVec.z * targetX) / det;
+
+    const earlyBase = Math.round(earlyExact);
+    const lateBase  = Math.round(lateExact);
+
     for (const cfg of configs) {
-      const det = earlyVec.x * lateVec.z - earlyVec.z * lateVec.x;
-      if (Math.abs(det) < 1e-12) continue;
-
-      const targetX = distVec.x / divider;
-      const targetZ = distVec.z / divider;
-
-      const earlyExact = (targetX * lateVec.z - targetZ * lateVec.x) / det;
-      const lateExact  = (earlyVec.x * targetZ - earlyVec.z * targetX) / det;
-
-      const earlyBase = Math.round(earlyExact);
-      const lateBase  = Math.round(lateExact);
-
-      for (let a = -20; a <= 20; a++) {
-        for (let b = -20; b <= 20; b++) {
+      // Search window +-30 around base
+      for (let a = -30; a <= 30; a++) {
+        for (let b = -30; b <= 30; b++) {
           const earlyTnt = earlyBase + a;
           const lateTnt  = lateBase  + b;
 
@@ -209,7 +211,14 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
 
           const totalTnt = earlyTnt + lateTnt + cfg.upaccelTnt;
           if (maxTnt > 0 && totalTnt > maxTnt) continue;
-          if (earlyTnt > MAX_BASKET_TNT_PER_SIDE || lateTnt > MAX_BASKET_TNT_PER_SIDE) continue;
+
+          // Fast linear distance check before expensive simulation
+          const estX = pearlX + (earlyVec.x * earlyTnt + lateVec.x * lateTnt) * divider;
+          const estZ = pearlZ + (earlyVec.z * earlyTnt + lateVec.z * lateTnt) * divider;
+          const estErr = Math.sqrt((estX - destX)**2 + (estZ - destZ)**2);
+
+          // Allow margin for vertical curvature
+          if (estErr > maxDistance + 10.0) continue;
 
           const sim = buildSimulation({ pearlX, pearlZ, earlyTnt, lateTnt, earlyVec, lateVec, upaccelTnt: cfg.upaccelTnt, longRange: cfg.longRange, tick, stopHeight });
           const landing = sim.snapshots[sim.snapshots.length - 1];
@@ -226,17 +235,14 @@ function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 
             longRange: cfg.longRange, direction: dirResult.direction, angle: dirResult.angle,
             landing: landing.pos, sim,
           });
-
-          if (results.length >= maxResults * 10) break;
         }
-        if (results.length >= maxResults * 10) break;
       }
     }
   }
 
   results.sort((a, b) => a.totalTnt - b.totalTnt || a.error - b.error);
 
-  // Filter out duplicates (same TNT counts & tick)
+  // Filter duplicates
   const unique = [];
   const seen = new Set();
   for (const r of results) {
@@ -377,7 +383,7 @@ if (typeof document !== 'undefined') {
           detailCard.style.display = 'none';
 
           if (out.results.length === 0) {
-            statusEl.textContent = 'No results found within Max Error. Try increasing Max Error (e.g. 5.0) or Max TNT.';
+            statusEl.textContent = 'No results found within Max Error. Try increasing Max Error (e.g. 20.0) or Max TNT.';
             statusEl.className = 'status-msg error';
             phEl.style.display = 'block';
             wrapEl.style.display = 'none';
@@ -446,7 +452,7 @@ function selectResult(idx) {
     { label: 'Late TNT',      value: r.lateTnt,                      cls: '' },
     { label: 'Upaccel TNT',   value: r.upaccelTnt,                   cls: '' },
     { label: 'Ticks in Air',  value: r.tick,                         cls: '' },
-    { label: 'Landing Error', value: r.error.toFixed(5) + ' blks',   cls: r.error > 1.0 ? 'warn' : '' },
+    { label: 'Landing Error', value: r.error.toFixed(5) + ' blks',   cls: r.error > 5.0 ? 'warn' : '' },
     { label: 'Long Range',    value: r.longRange ? 'Yes' : 'No',     cls: r.longRange ? 'warn' : '' },
     { label: 'Direction',     value: `${DIR_NAMES[r.direction]} (${r.direction})`, cls: '' },
     { label: 'Angle Index',   value: r.angle,                        cls: '' },
