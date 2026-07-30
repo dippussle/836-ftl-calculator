@@ -158,7 +158,7 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
   let divider = 0;
 
   const caps = SIZE_CAPS[cannonSize] || SIZE_CAPS.full;
-  const effectiveMaxTnt = maxTnt > 0 ? Math.min(maxTnt, caps.maxTnt) : caps.maxTnt;
+  const effectiveMaxTnt = maxTnt > 0 ? Math.min(maxTnt, caps.maxTnt) : 999999;
 
   for (let tick = 1; tick <= maxTicks; tick++) {
     divider += Math.pow(F32(0.99), tick);
