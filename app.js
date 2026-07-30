@@ -157,7 +157,7 @@ class Pearl {
   }
 }
 
-function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHeight = 128, maxTnt = 6688, maxTicks = 300, maxDistance = 50, maxResults = 50 }) {
+function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 50, maxResults = 50 }) {
   const pearlX = Math.floor(originX) + PEARL_HORIZONTAL_OFFSET;
   const pearlZ = Math.floor(originZ) + PEARL_HORIZONTAL_OFFSET;
 
@@ -166,20 +166,27 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
 
   const distVec = destPos.sub(pearlPos);
   const dirResult = calculateDirection(distVec);
-  const { earlyVec, lateVec } = calculateTntVectors(distVec, dirResult);
+  let { earlyVec, lateVec } = calculateTntVectors(distVec, dirResult);
 
   const possibleTicks = calculatePossibleTicksList(UPACCEL_TNT_LONGRANGE_Y)
     .concat(calculatePossibleTicksList(UPACCEL_TNT_Y));
 
-  const det = earlyVec.z * lateVec.x - lateVec.z * earlyVec.x;
+  let det = earlyVec.z * lateVec.x - lateVec.z * earlyVec.x;
   if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
 
-  const earlyTntExact = (distVec.z * lateVec.x - distVec.x * lateVec.z) / det;
-  const lateTntExact  = (distVec.x - earlyTntExact * earlyVec.x) / lateVec.x;
+  let earlyTntExact = (distVec.z * lateVec.x - distVec.x * lateVec.z) / det;
+  let lateTntExact  = (distVec.x - earlyTntExact * earlyVec.x) / lateVec.x;
+
+  earlyTntExact = Math.abs(earlyTntExact);
+  lateTntExact  = Math.abs(lateTntExact);
 
   const results = [];
   let divider = 0;
   let tryAgain = false;
+
+  const caps = SIZE_CAPS[cannonSize] || SIZE_CAPS.full;
+  const maxPerSideCap = maxTnt > 0 ? caps.maxPerSide : 999999;
+  const effectiveMaxTnt = maxTnt > 0 ? Math.min(maxTnt, caps.maxTnt) : 999999;
 
   for (let tick = 1; tick <= maxTicks; tick++) {
     divider += Math.pow(F32(0.99), tick);
@@ -205,9 +212,10 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
         const lateTnt  = lateBase  + b;
 
         if (earlyTnt < 0 || lateTnt < 0) continue;
+        if (earlyTnt > maxPerSideCap || lateTnt > maxPerSideCap) continue;
 
         const totalTnt = earlyTnt + lateTnt + upaccelTnt;
-        if (maxTnt > 0 && totalTnt > maxTnt) continue;
+        if (effectiveMaxTnt > 0 && totalTnt > effectiveMaxTnt) continue;
 
         const tntY = longRange ? UPACCEL_TNT_LONGRANGE_Y : UPACCEL_TNT_Y;
         const upaccelVel = calcExplosionVelocity(new Vec3(pearlX - PEARL_HORIZONTAL_OFFSET, tntY, pearlZ - PEARL_HORIZONTAL_OFFSET), pearlPos, PEARL_EYE_HEIGHT, F32(1.0)).multiply(upaccelTnt);
@@ -222,7 +230,7 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
         for (let t = 0; t < tick; t++) pearl.tick();
 
         const distance = pearl.pos.sub(destPos).lengthHorizontal();
-        if (distance > maxDistance) continue;
+        if (maxDistance > 0 && distance > maxDistance) continue;
 
         if (pearl.pos.y < PEARL_STOP_HEIGHT) {
           tryAgain = true;
@@ -264,240 +272,4 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
   return { results: unique.slice(0, maxResults), direction: dirResult };
 }
 
-function calcBits(tnt) {
-  const big    = Math.floor(tnt / 418);
-  const rem    = tnt % 418;
-  const medium = Math.floor(rem / 11);
-  const small  = rem % 11;
-  return { big, medium, small };
-}
 
-function calcUpaccelBits(tnt) {
-  return { high: Math.floor(tnt / 8), low: tnt % 8 };
-}
-
-function buildEncoding({ earlyTnt, lateTnt, upaccelTnt, direction, angle, longRange }) {
-  const early   = calcBits(earlyTnt);
-  const late    = calcBits(lateTnt);
-  const upaccel = calcUpaccelBits(upaccelTnt);
-  const yellow  = direction + (longRange ? 8 : 0);
-
-  return [
-    { color: '#3498db', name: 'Blue',       count: upaccel.high, desc: 'Upaccel / 8' },
-    { color: '#9b59b6', name: 'Purple',     count: upaccel.low,  desc: 'Upaccel mod 8' },
-    { color: '#1abc9c', name: 'Cyan',       count: late.small,   desc: 'Late mod 11' },
-    { color: '#85c1e9', name: 'Light Blue', count: late.medium,  desc: 'Late /11 mod 38' },
-    { color: '#2ecc71', name: 'Lime',       count: late.big,     desc: 'Late / 418' },
-    { color: '#f1c40f', name: 'Yellow',     count: yellow,       desc: 'Direction' },
-    { color: '#e67e22', name: 'Orange',     count: early.medium, desc: 'Early /11 mod 38' },
-    { color: '#e74c3c', name: 'Red',        count: early.big,    desc: 'Early / 418' },
-    { color: '#ff69b4', name: 'Pink',       count: early.small,  desc: 'Early mod 11' },
-    { color: '#888888', name: 'Magenta',    count: 0,            desc: '(unused)' },
-    { color: '#7d3c98', name: 'Purple2',    count: angle,        desc: 'Angle sub-index' },
-  ];
-}
-
-let savedResults = [];
-let selectedResult = null;
-
-if (typeof document !== 'undefined') {
-  for (const btn of document.querySelectorAll('.tab-btn')) {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('active');
-        b.setAttribute('aria-selected', 'false');
-      });
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected', 'true');
-      const p = document.getElementById('tab-' + btn.dataset.tab);
-      if (p) p.classList.add('active');
-    });
-  }
-
-  const sizeSelect = document.getElementById('c-cannon-size');
-  const maxTntInput = document.getElementById('c-max-tnt');
-  if (sizeSelect && maxTntInput) {
-    sizeSelect.addEventListener('change', () => {
-      const caps = SIZE_CAPS[sizeSelect.value] || SIZE_CAPS.full;
-      maxTntInput.value = caps.maxTnt;
-    });
-  }
-
-  const calcBtn = document.getElementById('btn-calculate');
-  if (calcBtn) {
-    calcBtn.addEventListener('click', () => {
-      const statusEl = document.getElementById('calc-status');
-      const wrapEl   = document.getElementById('results-wrap');
-      const phEl     = document.getElementById('results-placeholder');
-      const tbodyEl  = document.getElementById('results-tbody');
-      const metaEl   = document.getElementById('results-meta');
-      const detailCard = document.getElementById('detail-card');
-
-      statusEl.textContent = '';
-      statusEl.className = 'status-msg';
-
-      const originX    = parseFloat(document.getElementById('c-origin-x').value);
-      const originZ    = parseFloat(document.getElementById('c-origin-z').value);
-      const destX      = parseFloat(document.getElementById('c-dest-x').value);
-      const destZ      = parseFloat(document.getElementById('c-dest-z').value);
-      const cannonSize = document.getElementById('c-cannon-size').value;
-      const maxTnt     = parseInt(document.getElementById('c-max-tnt').value, 10);
-      const maxTicks   = parseInt(document.getElementById('c-max-ticks').value, 10);
-      const maxDist    = parseFloat(document.getElementById('c-max-dist').value);
-      const maxRes     = parseInt(document.getElementById('c-max-results').value, 10);
-      const stopHeight = parseFloat(document.getElementById('c-stop-mode').value);
-
-      if ([originX, originZ, destX, destZ, maxTnt, maxTicks, maxDist, stopHeight].some(isNaN)) {
-        statusEl.textContent = 'Please fill in required destination X and Z coordinates.';
-        statusEl.className = 'status-msg error';
-        return;
-      }
-
-      if (destX === originX && destZ === originZ) {
-        statusEl.textContent = 'Origin and destination are the same.';
-        statusEl.className = 'status-msg error';
-        return;
-      }
-
-      const horizDist = Math.sqrt((destX-originX)**2 + (destZ-originZ)**2);
-      statusEl.textContent = 'Calculating...';
-      statusEl.className = 'status-msg info';
-
-      setTimeout(() => {
-        try {
-          const t0 = performance.now();
-          const out = calculate({ originX, originZ, destX, destZ, cannonSize, stopHeight, maxTnt, maxTicks, maxDistance: maxDist, maxResults: maxRes });
-          const elapsed = (performance.now() - t0).toFixed(0);
-
-          if (out.error) {
-            statusEl.textContent = out.error;
-            statusEl.className = 'status-msg error';
-            return;
-          }
-
-          savedResults = out.results;
-          selectedResult = null;
-          detailCard.style.display = 'none';
-
-          if (out.results.length === 0) {
-            statusEl.textContent = 'No results found within Max Distance. Try increasing Max Distance or Max TNT.';
-            statusEl.className = 'status-msg error';
-            phEl.style.display = 'block';
-            wrapEl.style.display = 'none';
-            return;
-          }
-
-          tbodyEl.innerHTML = '';
-          for (let i = 0; i < out.results.length; i++) {
-            const r = out.results[i];
-            const tr = document.createElement('tr');
-            tr.dataset.idx = i;
-            const posStr = `(${r.landing.x.toFixed(3)}, ${r.landing.y.toFixed(3)}, ${r.landing.z.toFixed(3)})`;
-            tr.innerHTML = `
-              <td>${r.error.toFixed(3)}</td>
-              <td>${posStr}</td>
-              <td>${r.tick}</td>
-              <td>${r.earlyTnt}</td>
-              <td>${r.lateTnt}</td>
-              <td><strong>${r.totalTnt}</strong></td>
-              <td><button class="select-btn" data-idx="${i}">Select</button></td>
-            `;
-            tbodyEl.appendChild(tr);
-          }
-
-          tbodyEl.querySelectorAll('.select-btn').forEach(btn => {
-            btn.addEventListener('click', () => selectResult(parseInt(btn.dataset.idx, 10)));
-          });
-
-          metaEl.textContent = `${out.results.length} results found.`;
-
-          phEl.style.display = 'none';
-          wrapEl.style.display = 'block';
-
-          statusEl.textContent = `${out.results.length} results found.`;
-          statusEl.className = 'status-msg ok';
-
-          selectResult(0);
-        } catch (err) {
-          statusEl.textContent = 'Error: ' + err.message;
-          statusEl.className = 'status-msg error';
-          console.error(err);
-        }
-      }, 10);
-    });
-  }
-}
-
-function selectResult(idx) {
-  selectedResult = savedResults[idx];
-  const r = selectedResult;
-  if (!r) return;
-
-  document.querySelectorAll('#results-tbody tr').forEach((tr, i) => {
-    tr.classList.toggle('selected-row', i === idx);
-  });
-
-  const detailGrid = document.getElementById('detail-grid');
-  const landing = r.landing;
-  detailGrid.innerHTML = '';
-
-  const items = [
-    { label: 'Total TNT',     value: r.totalTnt,                     cls: 'big' },
-    { label: 'Early TNT',     value: r.earlyTnt,                     cls: '' },
-    { label: 'Late TNT',      value: r.lateTnt,                      cls: '' },
-    { label: 'Upaccel TNT',   value: r.upaccelTnt,                   cls: '' },
-    { label: 'Ticks in Air',  value: r.tick,                         cls: '' },
-    { label: 'Landing Error', value: r.error.toFixed(4) + ' blocks', cls: r.error > 10.0 ? 'warn' : '' },
-    { label: 'Long Range',    value: r.longRange ? 'Yes' : 'No',     cls: r.longRange ? 'warn' : '' },
-    { label: 'Direction',     value: `${DIR_NAMES[r.direction]} (${r.direction})`, cls: '' },
-    { label: 'Angle Index',   value: r.angle,                        cls: '' },
-    { label: 'Landing X',     value: landing ? landing.x.toFixed(3) : '?', cls: '' },
-    { label: 'Landing Y',     value: landing ? landing.y.toFixed(3) : '?', cls: '' },
-    { label: 'Landing Z',     value: landing ? landing.z.toFixed(3) : '?', cls: '' },
-  ];
-
-  for (const item of items) {
-    const div = document.createElement('div');
-    div.className = 'detail-item';
-    div.innerHTML = `<div class="detail-label">${item.label}</div><div class="detail-value ${item.cls}">${item.value}</div>`;
-    detailGrid.appendChild(div);
-  }
-
-  const encoding = buildEncoding({
-    earlyTnt: r.earlyTnt,
-    lateTnt: r.lateTnt,
-    upaccelTnt: r.upaccelTnt,
-    direction: r.direction,
-    angle: r.angle,
-    longRange: r.longRange
-  });
-
-  renderWoolEncoding(encoding);
-  document.getElementById('detail-card').style.display = 'block';
-}
-
-function renderWoolEncoding(encoding) {
-  const grid = document.getElementById('enc-grid');
-  if (grid) {
-    grid.innerHTML = '';
-    for (const e of encoding) {
-      const div = document.createElement('div');
-      div.className = 'wool-block';
-      div.innerHTML = `
-        <div class="wool-swatch-big" style="background:${e.color}"></div>
-        <div class="wool-info">
-          <div class="wool-color-name">${e.name}</div>
-          <div class="wool-count">${e.count}</div>
-          <div class="wool-desc">${e.desc}</div>
-        </div>
-      `;
-      grid.appendChild(div);
-    }
-  }
-
-  const encEmpty = document.getElementById('enc-empty');
-  const encOutput = document.getElementById('enc-output');
-  if (encEmpty) encEmpty.style.display = 'none';
-  if (encOutput) encOutput.style.display = 'block';
-}
