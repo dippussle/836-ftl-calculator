@@ -206,8 +206,8 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
 
     for (const cfg of configs) {
       // Search window +-10 around base solution
-      for (let a = -10; a <= 10; a++) {
-        for (let b = -10; b <= 10; b++) {
+      for (let a = -30; a <= 30; a++) {
+        for (let b = -30; b <= 30; b++) {
           const earlyTnt = earlyBase + a;
           const lateTnt  = lateBase  + b;
 
