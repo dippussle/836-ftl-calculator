@@ -1,0 +1,15 @@
+{
+  "name": "ftl-calculator",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "ftl_calculator_bg.wasm",
+    "ftl_calculator.js",
+    "ftl_calculator.d.ts"
+  ],
+  "main": "ftl_calculator.js",
+  "types": "ftl_calculator.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

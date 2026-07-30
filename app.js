@@ -1,578 +1,214 @@
-// 836 FTL v2 Ender Pearl Cannon Calculator
-// Exact 1-to-1 canonical 8-arm implementation from garlic-bred's Calculator.py
-
-const PEARL_HORIZONTAL_OFFSET = 0.51;
-const PEARL_Y = 256.22375;
-const PEARL_EYE_HEIGHT = 0.25 * Math.fround(0.85);
-const PEARL_Y_MOTION = -0.0784;
-
-const EXPLOSION_HEIGHT = Math.fround(0.98) * Math.fround(0.0625);
-const ALIGNMENT_TNT_Y = 255.1425;
-const ALIGNMENT_TNT_OFFSET = 1.8125;
-const BASKET_TNT_Y = 255.20375;
-const BASKET_TNT_Y_MOTION = -0.04 * 0.98;
-
-const BASKET_UPACCEL_TNT_Y = 251.34875;
-const BASKET_UPACCEL_TNT = 0;
-
-const UPACCEL_TNT_Y = 248.53626183321285;
-const UPACCEL_TNT_LONGRANGE_Y = 250.89563683321285;
-const MAX_UPACCEL_TNT = 31;
-const MAX_VARIABLE_TNT = 6666;
-const MAX_TNT = 6688;
-const NUM_OF_ANGLES = 4;
-
-const F32 = Math.fround;
-
-const SIZE_CAPS = {
-  full: { maxTnt: 6688, maxPerSide: 3344 },
-  half: { maxTnt: 3344, maxPerSide: 1672 },
-  quarter: { maxTnt: 1672, maxPerSide: 836 },
-};
-
-const DIR_NAMES = [
-  'WNW (0)', 'ENE (1)', 'NNW (2)', 'NNE (3)',
-  'SSE (4)', 'SSW (5)', 'ESE (6)', 'WSW (7)'
-];
-
-class Vec3 {
-  constructor(x, y, z) {
-    this.x = Number(x);
-    this.y = Number(y);
-    this.z = Number(z);
-  }
-  add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
-  sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
-  multiply(n) { return new Vec3(this.x * n, this.y * n, this.z * n); }
-  length() { return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
-  lengthHorizontal() { return Math.sqrt(this.x*this.x + this.z*this.z); }
-  copy() { return new Vec3(this.x, this.y, this.z); }
-}
-
-class Tnt {
-  constructor(pos, motion) {
-    this.pos = pos;
-    this.motion = motion;
-  }
-  calculateVelocityFromExplosion(entityPos, eyeHeight, exposure, isTnt) {
-    const explosionPos = this.pos.add(new Vec3(0, EXPLOSION_HEIGHT, 0));
-    const distNorm = explosionPos.sub(entityPos).length() / F32(8.0);
-    if (distNorm > 1.0) return new Vec3(0, 0, 0);
-
-    const targetY = isTnt ? entityPos.y : entityPos.y + Number(eyeHeight);
-    const dir = new Vec3(entityPos.x - explosionPos.x, targetY - explosionPos.y, entityPos.z - explosionPos.z);
-    const len = dir.length();
-    if (len === 0.0) return new Vec3(0, 0, 0);
-
-    const normDir = dir.multiply(1.0 / len);
-    return normDir.multiply((1.0 - distNorm) * Number(exposure));
-  }
-  tick() {
-    this.motion = this.motion.add(new Vec3(0, -0.04, 0));
-    this.pos = this.pos.add(this.motion);
-    this.motion = this.motion.multiply(0.98);
-  }
-}
-
-class Pearl {
-  constructor(pos, motion) {
-    this.pos = pos;
-    this.motion = motion;
-  }
-  tick() {
-    this.motion = this.motion.add(new Vec3(0, -0.03, 0));
-    this.motion = new Vec3(
-      F32(this.motion.x * F32(0.99)),
-      F32(this.motion.y * F32(0.99)),
-      F32(this.motion.z * F32(0.99))
-    );
-    this.pos = this.pos.add(this.motion);
-  }
-}
-
-function calculateDirection(vec) {
-  const cos45 = Math.cos(Math.PI / 4);
-  const sin45 = Math.sin(Math.PI / 4);
-  const rx = vec.x * cos45 - vec.z * sin45;
-  const rz = vec.x * sin45 + vec.z * cos45;
-  const scale = NUM_OF_ANGLES / Math.max(Math.abs(rx), Math.abs(rz));
-  const angle = Math.floor(Math.min(Math.abs(rx * scale), Math.abs(rz * scale)));
-
-  let vecAngle = Math.atan2(vec.z, vec.x) * (180 / Math.PI);
-  if (vecAngle < 0) vecAngle += 360;
-
-  let direction = 0;
-  if (vecAngle < 45) direction = 6;
-  else if (vecAngle < 90) direction = 4;
-  else if (vecAngle < 135) direction = 5;
-  else if (vecAngle < 180) direction = 7;
-  else if (vecAngle < 225) direction = 0;
-  else if (vecAngle < 270) direction = 2;
-  else if (vecAngle < 315) direction = 3;
-  else direction = 1;
-
-  return { direction, angle };
-}
-
-const ARM_OFFSETS = [
-  new Vec3( 0.5, BASKET_TNT_Y,  0.5),
-  new Vec3(-0.5, BASKET_TNT_Y,  0.5),
-  new Vec3(-0.5, BASKET_TNT_Y, -0.5),
-  new Vec3( 0.5, BASKET_TNT_Y, -0.5),
-  new Vec3( 0.5, BASKET_TNT_Y,  0.5),
-  new Vec3(-0.5, BASKET_TNT_Y,  0.5),
-  new Vec3(-0.5, BASKET_TNT_Y, -0.5),
-  new Vec3( 0.5, BASKET_TNT_Y, -0.5)
-];
-
-function calculateTntVectors(vec, direction) {
-  const firstAlignmentTntPos = new Vec3(1, 0, 1);
-  if (vec.x < 0) firstAlignmentTntPos.x = -1;
-  if (vec.z < 0) firstAlignmentTntPos.z = -1;
-
-  const secondAlignmentTntPos = firstAlignmentTntPos.copy();
-  if (Math.abs(vec.x) > Math.abs(vec.z)) {
-    secondAlignmentTntPos.z *= -1;
-  } else {
-    secondAlignmentTntPos.x *= -1;
-  }
-
-  const p1 = firstAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(0, ALIGNMENT_TNT_Y, 0));
-  const p2 = secondAlignmentTntPos.multiply(ALIGNMENT_TNT_OFFSET).add(new Vec3(0, ALIGNMENT_TNT_Y, 0));
-
-  const firstAlignmentTnt  = new Tnt(p1, new Vec3(0, 0, 0));
-  const secondAlignmentTnt = new Tnt(p2, new Vec3(0, 0, 0));
-  const basketUpaccelTnt   = new Tnt(new Vec3(0, BASKET_UPACCEL_TNT_Y, 0), new Vec3(0, 0, 0));
-
-  const dirIdx = direction ? direction.direction : 0;
-  const earlyPos = ARM_OFFSETS[(dirIdx + 2) % 8].copy();
-  const latePos  = ARM_OFFSETS[dirIdx % 8].copy();
-
-  const earlyTnt = new Tnt(earlyPos, new Vec3(0, BASKET_TNT_Y_MOTION, 0));
-  const lateTnt  = new Tnt(latePos,  new Vec3(0, BASKET_TNT_Y_MOTION, 0));
-
-  const angle = direction ? direction.angle : 0;
-
-  const ev1 = firstAlignmentTnt.calculateVelocityFromExplosion(earlyTnt.pos, 0, F32(1.0/27.0), true).multiply(NUM_OF_ANGLES);
-  const ev2 = secondAlignmentTnt.calculateVelocityFromExplosion(earlyTnt.pos, 0, F32(1.0/27.0), true).multiply(angle);
-  const ev3 = basketUpaccelTnt.calculateVelocityFromExplosion(earlyTnt.pos, 0, F32(1.0), true).multiply(BASKET_UPACCEL_TNT);
-  earlyTnt.motion = earlyTnt.motion.add(ev1).add(ev2).add(ev3);
-
-  const lv1 = firstAlignmentTnt.calculateVelocityFromExplosion(lateTnt.pos, 0, F32(1.0/27.0), true).multiply(NUM_OF_ANGLES);
-  const lv2 = secondAlignmentTnt.calculateVelocityFromExplosion(lateTnt.pos, 0, F32(1.0/27.0), true).multiply(angle + 1);
-  const lv3 = basketUpaccelTnt.calculateVelocityFromExplosion(lateTnt.pos, 0, F32(1.0), true).multiply(BASKET_UPACCEL_TNT);
-  lateTnt.motion = lateTnt.motion.add(lv1).add(lv2).add(lv3);
-
-  earlyTnt.tick();
-  lateTnt.tick();
-
-  const pearlPos = new Vec3(PEARL_HORIZONTAL_OFFSET, PEARL_Y, PEARL_HORIZONTAL_OFFSET);
-  const earlyTntVector = earlyTnt.calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false);
-  const lateTntVector  = lateTnt.calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false);
-
-  return [ earlyTntVector, lateTntVector ];
-}
-
-function calculatePossibleTicks(upaccelTntY) {
-  const possibleTicks = [];
-  const pearlPos = new Vec3(PEARL_HORIZONTAL_OFFSET, PEARL_Y, PEARL_HORIZONTAL_OFFSET);
-  for (let upaccelTnt = 0; upaccelTnt <= MAX_UPACCEL_TNT; upaccelTnt++) {
-    const tntPos = new Vec3(0, upaccelTntY, 0);
-    const tnt = new Tnt(tntPos, new Vec3(0, 0, 0));
-    const upaccelVel = tnt.calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false).multiply(upaccelTnt);
-    const pearl = new Pearl(pearlPos.copy(), new Vec3(0, PEARL_Y_MOTION, 0).add(upaccelVel));
-
-    let ticks = 0;
-    while (pearl.pos.y >= 256.0) {
-      pearl.tick();
-      ticks++;
-    }
-    possibleTicks.push(ticks);
-  }
-  return possibleTicks;
-}
-
-class PearlSimulation {
-  constructor(pearlPos, initMotion, ticks, upaccelTnt, longRange, direction) {
-    this.pearlPos = pearlPos;
-    this.initMotion = initMotion;
-    this.ticks = ticks;
-    this.upaccelTnt = upaccelTnt;
-    this.longRange = longRange;
-    this.direction = direction;
-
-    const tntY = longRange ? UPACCEL_TNT_LONGRANGE_Y : UPACCEL_TNT_Y;
-    const upaccelVel = new Tnt(new Vec3(0, tntY, 0), new Vec3(0,0,0)).calculateVelocityFromExplosion(pearlPos, PEARL_EYE_HEIGHT, F32(1.0), false).multiply(upaccelTnt);
-
-    this.pearl = new Pearl(pearlPos.copy(), initMotion.add(upaccelVel));
-  }
-  getEnd() {
-    for (let t = 0; t < this.ticks; t++) {
-      this.pearl.tick();
-    }
-    return this.pearl;
-  }
-}
-
-function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 50, maxResults = 50 }) {
-  const pearlX = Math.floor(originX) + PEARL_HORIZONTAL_OFFSET;
-  const pearlZ = Math.floor(originZ) + PEARL_HORIZONTAL_OFFSET;
-
-  const pearlPos = new Vec3(pearlX, PEARL_Y, pearlZ);
-  const destPos  = new Vec3(destX, 0, destZ);
-
-  const distanceExact = destPos.sub(pearlPos);
-  const dirResult = calculateDirection(distanceExact);
-  const [ earlyTntVector, lateTntVector ] = calculateTntVectors(distanceExact, dirResult);
-
-  const det = earlyTntVector.x * lateTntVector.z - earlyTntVector.z * lateTntVector.x;
-  if (Math.abs(det) < 1e-12) return { results: [], direction: dirResult };
-
-  let earlyTntExact = Math.abs((distanceExact.x * lateTntVector.z - distanceExact.z * lateTntVector.x) / det);
-  let lateTntExact  = Math.abs((earlyTntVector.x * distanceExact.z - earlyTntVector.z * distanceExact.x) / det);
-
-  const possibleTicks = calculatePossibleTicks(UPACCEL_TNT_LONGRANGE_Y).concat(calculatePossibleTicks(UPACCEL_TNT_Y));
-
-  const results = [];
-  let divider = 0;
-
-  let upaccelTnt = 0;
-  let longRange = false;
-  let tryAgain = false;
-
-  const caps = SIZE_CAPS[cannonSize] || SIZE_CAPS.full;
-  const effectiveMaxTnt = maxTnt > 0 ? Math.min(maxTnt, caps.maxTnt) : 999999;
-  const effectiveMaxDist = maxDistance > 0 ? maxDistance : 99999999.0;
-
-  for (let tick = 1; tick <= maxTicks; tick++) {
-    divider += Math.pow(F32(0.99), tick);
-
-    const idx = possibleTicks.indexOf(tick);
-    if (idx !== -1) {
-      upaccelTnt = idx % (MAX_UPACCEL_TNT + 1);
-      longRange = idx <= (MAX_UPACCEL_TNT + 1);
-    } else {
-      if (!tryAgain) continue;
-    }
-    tryAgain = false;
-
-    const earlyBase = Math.round(earlyTntExact / divider);
-    const lateBase  = Math.round(lateTntExact / divider);
-
-    for (let a = -2; a <= 2; a++) {
-      for (let b = -2; b <= 2; b++) {
-        const earlyTnt = earlyBase + a;
-        const lateTnt  = lateBase  + b;
-
-        if (earlyTnt < 0 || lateTnt < 0) continue;
-
-        const totalTnt = earlyTnt + lateTnt + upaccelTnt;
-
-        if (maxTnt > 0 && totalTnt > effectiveMaxTnt) continue;
-        if (maxTnt > 0 && Math.floor(earlyTnt / 11) + Math.floor(lateTnt / 11) > Math.floor(MAX_VARIABLE_TNT / 11)) continue;
-
-        const initMotion = new Vec3(
-          earlyTntVector.x * earlyTnt + lateTntVector.x * lateTnt,
-          PEARL_Y_MOTION,
-          earlyTntVector.z * earlyTnt + lateTntVector.z * lateTnt
-        );
-
-        const sim = new PearlSimulation(pearlPos, initMotion, tick, upaccelTnt, longRange, dirResult.direction);
-        const endPearl = sim.getEnd();
-
-        const distance = endPearl.pos.sub(destPos).lengthHorizontal();
-        if (distance > effectiveMaxDist) continue;
-
-        if (endPearl.pos.y < stopHeight) {
-          tryAgain = true;
-          continue;
-        }
-
-        endPearl.tick();
-        if (endPearl.pos.y >= stopHeight) {
-          tryAgain = true;
-          continue;
-        }
-
-        const landingPos = endPearl.pos;
-        const distanceVal = Math.sqrt((destX - originX)**2 + (destZ - originZ)**2);
-
-        results.push({
-          earlyTnt, lateTnt, upaccelTnt, totalTnt, error: distance,
-          distance: distanceVal, tick,
-          longRange, direction: dirResult.direction, angle: dirResult.angle,
-          landing: landingPos,
-          sim: { initMotion, snapshots: [{ tick, pos: landingPos, motion: endPearl.motion }] }
-        });
-      }
-    }
-  }
-
-  results.sort((a, b) => a.error - b.error || a.totalTnt - b.totalTnt);
-
-  const unique = [];
-  const seen = new Set();
-  for (const r of results) {
-    const key = `${r.earlyTnt}-${r.lateTnt}-${r.upaccelTnt}-${r.tick}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(r);
-    }
-  }
-
-  return { results: unique.slice(0, maxResults), direction: dirResult };
-}
-
-function calcBits(tnt) {
-  const big    = Math.floor(tnt / 418);
-  const rem    = tnt % 418;
-  const medium = Math.floor(rem / 11);
-  const small  = rem % 11;
-  return { big, medium, small };
-}
-
-function calcUpaccelBits(tnt) {
-  return { high: Math.floor(tnt / 8), low: tnt % 8 };
-}
-
-function buildEncoding({ earlyTnt, lateTnt, upaccelTnt, direction, angle, longRange }) {
-  const early   = calcBits(earlyTnt);
-  const late    = calcBits(lateTnt);
-  const upaccel = calcUpaccelBits(upaccelTnt);
-  const yellow  = direction + (longRange ? 8 : 0);
-
-  return [
-    { color: '#3498db', name: 'Blue',       count: upaccel.high, desc: 'Upaccel / 8' },
-    { color: '#9b59b6', name: 'Purple',     count: upaccel.low,  desc: 'Upaccel mod 8' },
-    { color: '#1abc9c', name: 'Cyan',       count: late.small,   desc: 'Late mod 11' },
-    { color: '#85c1e9', name: 'Light Blue', count: late.medium,  desc: 'Late /11 mod 38' },
-    { color: '#2ecc71', name: 'Lime',       count: late.big,     desc: 'Late / 418' },
-    { color: '#f1c40f', name: 'Yellow',     count: yellow,       desc: 'Direction' },
-    { color: '#e67e22', name: 'Orange',     count: early.medium, desc: 'Early /11 mod 38' },
-    { color: '#e74c3c', name: 'Red',        count: early.big,    desc: 'Early / 418' },
-    { color: '#ff69b4', name: 'Pink',       count: early.small,  desc: 'Early mod 11' },
-    { color: '#888888', name: 'Magenta',    count: 0,            desc: '(unused)' },
-    { color: '#7d3c98', name: 'Purple2',    count: angle,        desc: 'Angle sub-index' },
-  ];
-}
-
-let savedResults = [];
-let selectedResult = null;
-
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    for (const btn of document.querySelectorAll('.tab-btn')) {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.remove('active');
-          b.setAttribute('aria-selected', 'false');
-        });
-        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        btn.setAttribute('aria-selected', 'true');
-        const p = document.getElementById('tab-' + btn.dataset.tab);
-        if (p) p.classList.add('active');
-      });
-    }
-
-    const sizeSelect = document.getElementById('c-cannon-size');
-    const maxTntInput = document.getElementById('c-max-tnt');
-    if (sizeSelect && maxTntInput) {
-      sizeSelect.addEventListener('change', () => {
-        const caps = SIZE_CAPS[sizeSelect.value] || SIZE_CAPS.full;
-        maxTntInput.value = caps.maxTnt;
-      });
-    }
-
-    const calcBtn = document.getElementById('btn-calculate');
-    if (calcBtn) {
-      calcBtn.addEventListener('click', () => {
-        const statusEl = document.getElementById('calc-status');
-        const wrapEl   = document.getElementById('results-wrap');
-        const phEl     = document.getElementById('results-placeholder');
-        const tbodyEl  = document.getElementById('results-tbody');
-        const metaEl   = document.getElementById('results-meta');
-        const detailCard = document.getElementById('detail-card');
-
-        if (statusEl) {
-          statusEl.textContent = '';
-          statusEl.className = 'status-msg';
-        }
-
-        const originX    = parseFloat(document.getElementById('c-origin-x').value) || 0;
-        const originZ    = parseFloat(document.getElementById('c-origin-z').value) || 0;
-        let destX        = parseFloat(document.getElementById('c-dest-x').value);
-        let destZ        = parseFloat(document.getElementById('c-dest-z').value);
-        const cannonSize = document.getElementById('c-cannon-size').value;
-        const maxTnt     = parseInt(document.getElementById('c-max-tnt').value, 10);
-        const maxTicks   = parseInt(document.getElementById('c-max-ticks').value, 10) || 500;
-        const maxDist    = parseFloat(document.getElementById('c-max-dist').value);
-        const maxRes     = document.getElementById('c-max-results') ? parseInt(document.getElementById('c-max-results').value, 10) : 50;
-        const stopHeight = document.getElementById('c-stop-mode') ? parseFloat(document.getElementById('c-stop-mode').value) : 128;
-        const targetDim  = document.getElementById('c-dest-dim') ? document.getElementById('c-dest-dim').value : 'overworld';
-
-        if (isNaN(destX) || isNaN(destZ)) {
-          if (statusEl) {
-            statusEl.textContent = 'Please fill in required destination X and Z coordinates.';
-            statusEl.className = 'status-msg error';
-          }
-          return;
-        }
-
-        if (targetDim === 'overworld') {
-          destX /= 8.0;
-          destZ /= 8.0;
-        }
-
-        if (statusEl) {
-          statusEl.textContent = 'Calculating...';
-          statusEl.className = 'status-msg info';
-        }
-
-        setTimeout(() => {
-          try {
-            const out = calculate({ originX, originZ, destX, destZ, cannonSize, stopHeight, maxTnt, maxTicks, maxDistance: maxDist, maxResults: maxRes });
-
-            if (out.error) {
-              if (statusEl) {
-                statusEl.textContent = out.error;
-                statusEl.className = 'status-msg error';
-              }
-              return;
-            }
-
-            savedResults = out.results;
-            selectedResult = null;
-            if (detailCard) detailCard.style.display = 'none';
-
-            if (!out.results || out.results.length === 0) {
-              if (statusEl) {
-                statusEl.textContent = 'No results found within Max Distance. Try increasing Max Distance or Max TNT.';
-                statusEl.className = 'status-msg error';
-              }
-              if (phEl) phEl.style.display = 'block';
-              if (wrapEl) wrapEl.style.display = 'none';
-              return;
-            }
-
-            if (tbodyEl) {
-              tbodyEl.innerHTML = '';
-              for (let i = 0; i < out.results.length; i++) {
-                const r = out.results[i];
-                const tr = document.createElement('tr');
-                tr.dataset.idx = i;
-                const posStr = `(${r.landing.x.toFixed(3)}, ${r.landing.y.toFixed(3)}, ${r.landing.z.toFixed(3)})`;
-                tr.innerHTML = `
-                  <td>${r.error.toFixed(3)}</td>
-                  <td>${posStr}</td>
-                  <td>${r.tick}</td>
-                  <td>${r.earlyTnt}</td>
-                  <td>${r.lateTnt}</td>
-                  <td><strong>${r.totalTnt}</strong></td>
-                  <td><button class="select-btn" data-idx="${i}">Select</button></td>
-                `;
-                tbodyEl.appendChild(tr);
-              }
-
-              tbodyEl.querySelectorAll('.select-btn').forEach(btn => {
-                btn.addEventListener('click', () => selectResult(parseInt(btn.dataset.idx, 10)));
-              });
-            }
-
-            if (metaEl) metaEl.textContent = `${out.results.length} results found.`;
-            if (phEl) phEl.style.display = 'none';
-            if (wrapEl) wrapEl.style.display = 'block';
-
-            if (statusEl) {
-              statusEl.textContent = `${out.results.length} results found.`;
-              statusEl.className = 'status-msg ok';
-            }
-
-            selectResult(0);
-          } catch (err) {
-            if (statusEl) {
-              statusEl.textContent = 'Error: ' + err.message;
-              statusEl.className = 'status-msg error';
-            }
-            console.error(err);
-          }
-        }, 10);
-      });
-    }
+import init, {
+  wasm_calculate,
+  wasm_simulate,
+} from "./pkg/ftl_calculator.js";
+
+// ─── Init WASM ────────────────────────────────────────────────────────────────
+
+await init();
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+
+for (const btn of document.querySelectorAll(".tab-btn")) {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
   });
 }
 
-function selectResult(idx) {
-  selectedResult = savedResults[idx];
-  const r = selectedResult;
-  if (!r) return;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  document.querySelectorAll('#results-tbody tr').forEach((tr, i) => {
-    tr.classList.toggle('selected-row', i === idx);
-  });
-
-  const detailGrid = document.getElementById('detail-grid');
-  if (!detailGrid) return;
-  const landing = r.landing;
-  detailGrid.innerHTML = '';
-
-  const items = [
-    { label: 'Total TNT',     value: r.totalTnt,                     cls: 'big' },
-    { label: 'Early TNT',     value: r.earlyTnt,                     cls: '' },
-    { label: 'Late TNT',      value: r.lateTnt,                      cls: '' },
-    { label: 'Upaccel TNT',   value: r.upaccelTnt,                   cls: '' },
-    { label: 'Ticks in Air',  value: r.tick,                         cls: '' },
-    { label: 'Landing Error', value: r.error.toFixed(4) + ' blocks', cls: r.error > 10.0 ? 'warn' : '' },
-    { label: 'Long Range',    value: r.longRange ? 'Yes' : 'No',     cls: r.longRange ? 'warn' : '' },
-    { label: 'Direction',     value: `${DIR_NAMES[r.direction]} (${r.direction})`, cls: '' },
-    { label: 'Angle Index',   value: r.angle,                        cls: '' },
-    { label: 'Landing X',     value: landing ? landing.x.toFixed(3) : '?', cls: '' },
-    { label: 'Landing Y',     value: landing ? landing.y.toFixed(3) : '?', cls: '' },
-    { label: 'Landing Z',     value: landing ? landing.z.toFixed(3) : '?', cls: '' },
-  ];
-
-  for (const item of items) {
-    const div = document.createElement('div');
-    div.className = 'detail-item';
-    div.innerHTML = `<div class="detail-label">${item.label}</div><div class="detail-value ${item.cls}">${item.value}</div>`;
-    detailGrid.appendChild(div);
-  }
-
-  const encoding = buildEncoding({
-    earlyTnt: r.earlyTnt,
-    lateTnt: r.lateTnt,
-    upaccelTnt: r.upaccelTnt,
-    direction: r.direction,
-    angle: r.angle,
-    longRange: r.longRange
-  });
-
-  renderWoolEncoding(encoding);
-  const detailCard = document.getElementById('detail-card');
-  if (detailCard) detailCard.style.display = 'block';
+function fmtVec(arr) {
+  return `(${arr[0].toFixed(3)}, ${arr[1].toFixed(3)}, ${arr[2].toFixed(3)})`;
 }
 
-function renderWoolEncoding(encoding) {
-  const grid = document.getElementById('enc-grid');
-  if (grid) {
-    grid.innerHTML = '';
-    for (const e of encoding) {
-      const div = document.createElement('div');
-      div.className = 'wool-block';
-      div.innerHTML = `
-        <div class="wool-swatch-big" style="background:${e.color}"></div>
-        <div class="wool-info">
-          <div class="wool-color-name">${e.name}</div>
-          <div class="wool-count">${e.count}</div>
-          <div class="wool-desc">${e.desc}</div>
-        </div>
-      `;
-      grid.appendChild(div);
-    }
+function setStatus(id, msg, isError = false) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = "status" + (isError ? " error" : "");
+}
+
+// ─── Calculate TNT ────────────────────────────────────────────────────────────
+
+let calcResults = []; // store full result objects for row selection
+
+document.getElementById("btn-calculate").addEventListener("click", () => {
+  const pearlX    = Math.floor(parseFloat(document.getElementById("pearl-x").value)) + 0.51;
+  const pearlZ    = Math.floor(parseFloat(document.getElementById("pearl-z").value)) + 0.51;
+  const destX     = parseFloat(document.getElementById("dest-x").value);
+  const destZ     = parseFloat(document.getElementById("dest-z").value);
+  const maxTnt       = parseInt(document.getElementById("max-tnt").value, 10);
+  const maxTicks     = parseInt(document.getElementById("max-ticks").value, 10);
+  const maxDist      = parseFloat(document.getElementById("max-distance").value);
+  const cannonMaxTnt = parseInt(document.getElementById("cannon-size").value, 10);
+  const mcVersion    = document.getElementById("mc-version").value;
+
+  if ([pearlX, pearlZ, destX, destZ, maxTnt, maxTicks, maxDist, cannonMaxTnt].some(isNaN)) {
+    setStatus("calc-status", "Invalid input — all fields are required.", true);
+    return;
   }
 
-  const encEmpty = document.getElementById('enc-empty');
-  const encOutput = document.getElementById('enc-output');
-  if (encEmpty) encEmpty.style.display = 'none';
-  if (encOutput) encOutput.style.display = 'block';
+  setStatus("calc-status", "Calculating…");
+  const tbody = document.getElementById("results-body");
+  tbody.innerHTML = "";
+  calcResults = [];
+
+  // Run WASM (synchronous — happens in microseconds to a few seconds)
+  let results;
+  try {
+    results = wasm_calculate(pearlX, pearlZ, destX, destZ, maxTnt, maxTicks, maxDist, cannonMaxTnt, mcVersion);
+  } catch (e) {
+    setStatus("calc-status", `Error: ${e}`, true);
+    return;
+  }
+
+  if (!results || results.length === 0) {
+    setStatus("calc-status", "No results found.");
+    return;
+  }
+
+  calcResults = results;
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const tr = document.createElement("tr");
+    tr.dataset.idx = i;
+    tr.innerHTML = `
+      <td>${r.distance.toFixed(3)}</td>
+      <td>${fmtVec(r.end_pos)}</td>
+      <td>${r.ticks}</td>
+      <td>${r.early_tnt}</td>
+      <td>${r.late_tnt}</td>
+      <td>${r.early_tnt + r.late_tnt}</td>
+    `;
+    tr.addEventListener("click", () => onResultSelected(i, tr));
+    tbody.appendChild(tr);
+  }
+
+  setStatus("calc-status", `${results.length} result${results.length !== 1 ? "s" : ""} found.`);
+});
+
+function onResultSelected(idx, tr) {
+  // Highlight row
+  document.querySelectorAll("#results-body tr").forEach((r) => r.classList.remove("selected"));
+  tr.classList.add("selected");
+
+  const r = calcResults[idx];
+
+  // Fill Pearl Simulate tab
+  document.getElementById("sim-pos-x").value = r.sim_pos[0];
+  document.getElementById("sim-pos-y").value = r.sim_pos[1];
+  document.getElementById("sim-pos-z").value = r.sim_pos[2];
+  document.getElementById("sim-mot-x").value = r.sim_motion[0];
+  document.getElementById("sim-mot-y").value = r.sim_motion[1];
+  document.getElementById("sim-mot-z").value = r.sim_motion[2];
+
+  // Auto-run simulation
+  runSimulate();
+
+  // Show encoding
+  renderEncoding(r.encoding);
+}
+
+// ─── Encoding renderer ────────────────────────────────────────────────────────
+
+function renderEncoding(encodingStr) {
+  const placeholder = document.getElementById("encoding-placeholder");
+  const container   = document.getElementById("encoding-container");
+  const rowsEl      = document.getElementById("encoding-rows");
+  const blockEl     = document.getElementById("encoding-block-row");
+
+  if (!encodingStr) {
+    placeholder.style.display = "";
+    container.style.display = "none";
+    return;
+  }
+
+  placeholder.style.display = "none";
+  container.style.display = "";
+  rowsEl.innerHTML = "";
+  blockEl.innerHTML = "";
+
+  for (const line of encodingStr.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // "label:  [value]"
+    const bracketMatch = trimmed.match(/^([^:]+):\s+\[([^\]]*)\]$/);
+    if (bracketMatch) {
+      const label = bracketMatch[1].trim();
+      const value = bracketMatch[2];
+      const row = document.createElement("div");
+      row.className = "enc-row";
+      row.innerHTML = `<label>${label}</label><input type="text" readonly value="${value}">`;
+      rowsEl.appendChild(row);
+      continue;
+    }
+
+    // "place a block at: value"
+    const blockMatch = trimmed.match(/^place a block at:\s*(.+)$/);
+    if (blockMatch) {
+      const row = document.createElement("div");
+      row.className = "enc-row";
+      row.innerHTML = `<label>coordinates</label><input type="text" readonly value="${blockMatch[1].trim()}">`;
+      blockEl.appendChild(row);
+    }
+  }
+}
+
+// ─── Pearl Simulate ───────────────────────────────────────────────────────────
+
+document.getElementById("btn-simulate").addEventListener("click", runSimulate);
+
+function runSimulate() {
+  const px = parseFloat(document.getElementById("sim-pos-x").value);
+  const py = parseFloat(document.getElementById("sim-pos-y").value);
+  const pz = parseFloat(document.getElementById("sim-pos-z").value);
+  const mx = parseFloat(document.getElementById("sim-mot-x").value);
+  const my = parseFloat(document.getElementById("sim-mot-y").value);
+  const mz = parseFloat(document.getElementById("sim-mot-z").value);
+
+  if ([px, py, pz, mx, my, mz].some(isNaN)) {
+    setStatus("sim-status", "Invalid input.", true);
+    return;
+  }
+
+  const tbody = document.getElementById("sim-body");
+  tbody.innerHTML = "";
+  document.getElementById("tp-output").textContent = "";
+
+  let ticks;
+  try {
+    ticks = wasm_simulate(px, py, pz, mx, my, mz);
+  } catch (e) {
+    setStatus("sim-status", `Error: ${e}`, true);
+    return;
+  }
+
+  if (!ticks || ticks.length === 0) {
+    setStatus("sim-status", "Pearl starts at or below stop height.");
+    return;
+  }
+
+  for (const t of ticks) {
+    const tr = document.createElement("tr");
+    // Store raw pos for /tp command on click
+    tr.dataset.pos = JSON.stringify(t.pos);
+    tr.innerHTML = `
+      <td>${t.tick}</td>
+      <td>${fmtVec(t.pos)}</td>
+      <td>${fmtVec(t.motion)}</td>
+    `;
+    tr.addEventListener("click", () => {
+      document.querySelectorAll("#sim-body tr").forEach((r) => r.classList.remove("selected"));
+      tr.classList.add("selected");
+      const [x, y, z] = t.pos;
+      document.getElementById("tp-output").textContent = `/tp @p ${x} ${y} ${z}`;
+    });
+    tbody.appendChild(tr);
+  }
+
+  setStatus("sim-status", `${ticks.length} tick${ticks.length !== 1 ? "s" : ""} simulated.`);
 }
