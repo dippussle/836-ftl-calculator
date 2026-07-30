@@ -159,7 +159,7 @@ function simulatePearl(pos, motion, stopHeight, maxTicks = 500) {
   return snapshots;
 }
 
-function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 100000, maxTicks = 500, maxDistance = 20.0, maxResults = 50 }) {
+function calculate({ originX, originZ, destX, destZ, stopHeight = 128, maxTnt = 6688, maxTicks = 500, maxDistance = 20.0, maxResults = 50 }) {
   const pearlX = Math.floor(originX) + 0.51;
   const pearlZ = Math.floor(originZ) + 0.51;
 
