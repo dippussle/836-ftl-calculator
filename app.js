@@ -19,9 +19,9 @@ const NUM_OF_ANGLES = 4;
 const MAX_UPACCEL_TNT = 40;
 
 const SIZE_CAPS = {
-  full: { maxTnt: 6688, maxPerSide: 3344 },
-  half: { maxTnt: 3344, maxPerSide: 1672 },
-  quarter: { maxTnt: 1672, maxPerSide: 836 },
+  full: { maxTnt: 6688 },
+  half: { maxTnt: 3344 },
+  quarter: { maxTnt: 1672 },
 };
 
 class Vec3 {
@@ -168,9 +168,6 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
   const pearlX = Math.floor(originX) + 0.51;
   const pearlZ = Math.floor(originZ) + 0.51;
 
-  const caps = SIZE_CAPS[cannonSize] || SIZE_CAPS.full;
-  const maxPerSide = caps.maxPerSide;
-
   const distVec = new Vec3(destX - pearlX, 0, destZ - pearlZ);
   const dirResult = calculateDirection(distVec);
   const { earlyVec, lateVec } = calculateTntVectors(distVec, dirResult);
@@ -208,22 +205,16 @@ function calculate({ originX, originZ, destX, destZ, cannonSize = 'full', stopHe
     const lateBase  = Math.round(lateExact);
 
     for (const cfg of configs) {
-      for (let a = -30; a <= 30; a++) {
-        for (let b = -30; b <= 30; b++) {
+      // Search window +-10 around base solution
+      for (let a = -10; a <= 10; a++) {
+        for (let b = -10; b <= 10; b++) {
           const earlyTnt = earlyBase + a;
           const lateTnt  = lateBase  + b;
 
           if (earlyTnt < 0 || lateTnt < 0) continue;
-          if (maxTnt > 0 && maxPerSide > 0 && (earlyTnt > maxPerSide || lateTnt > maxPerSide)) continue;
 
           const totalTnt = earlyTnt + lateTnt + cfg.upaccelTnt;
           if (maxTnt > 0 && totalTnt > maxTnt) continue;
-
-          // Fast linear distance pre-check
-          const estX = pearlX + (earlyVec.x * earlyTnt + lateVec.x * lateTnt) * divider;
-          const estZ = pearlZ + (earlyVec.z * earlyTnt + lateVec.z * lateTnt) * divider;
-          const estErr = Math.sqrt((estX - destX)**2 + (estZ - destZ)**2);
-          if (estErr > maxDistance + 10.0) continue;
 
           const sim = buildSimulation({ pearlX, pearlZ, earlyTnt, lateTnt, earlyVec, lateVec, upaccelTnt: cfg.upaccelTnt, longRange: cfg.longRange, tick, stopHeight });
           const landing = sim.snapshots[sim.snapshots.length - 1];
@@ -320,7 +311,6 @@ let savedResults = [];
 let selectedResult = null;
 
 if (typeof document !== 'undefined') {
-  // Tab switching
   for (const btn of document.querySelectorAll('.tab-btn')) {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => {
@@ -335,7 +325,6 @@ if (typeof document !== 'undefined') {
     });
   }
 
-  // Cannon size select event -> update max TNT input
   const sizeSelect = document.getElementById('c-cannon-size');
   const maxTntInput = document.getElementById('c-max-tnt');
   if (sizeSelect && maxTntInput) {
@@ -440,7 +429,6 @@ if (typeof document !== 'undefined') {
           statusEl.textContent = `${out.results.length} results found.`;
           statusEl.className = 'status-msg ok';
 
-          // Select first result automatically
           selectResult(0);
         } catch (err) {
           statusEl.textContent = 'Error: ' + err.message;
@@ -487,7 +475,6 @@ function selectResult(idx) {
     detailGrid.appendChild(div);
   }
 
-  // Render Wool Encoding
   const encoding = buildEncoding({
     earlyTnt: r.earlyTnt,
     lateTnt: r.lateTnt,
